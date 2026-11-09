@@ -12,17 +12,22 @@ stage_mem_note() { echo "default"; }
 stage_mem_check() {
   check_tools gcc
   dpkg -L lmbench 2>/dev/null | grep -q 'lat_mem_rd$' || PROBLEMS+=("lmbench is not installed")
-  [ -s "$HOME/bench-cache/stream.c" ] || check_tools curl
+  if [ -n "${STREAM_C:-}" ]; then
+    [ -s "$STREAM_C" ] || PROBLEMS+=("STREAM_C=$STREAM_C is not a readable file")
+  elif [ ! -s "$HOME/bench-cache/stream.c" ]; then
+    check_tools curl
+  fi
+  [ "${STREAM_SKIP_CHECK:-}" = 1 ] || { need sha256sum || need shasum || PROBLEMS+=("sha256sum is not installed (needed to verify stream.c; see STREAM_SKIP_CHECK in the README)"); }
 }
 
+# stream.c is pinned (lib/stream.sh): it is only compiled when it has the pinned sha256, whatever its source
 stage_mem_run() {
   log "== mem"
-  local cache=$HOME/bench-cache; mkdir -p "$cache"
-  local src=$cache/stream.c n nt
-  if [ ! -s "$src" ]; then
-    curl -fsSL --retry 3 --connect-timeout 15 -o "$src" "${STREAM_URL:-https://raw.githubusercontent.com/jeffhammond/STREAM/master/stream.c}" || { rm -f "$src"; bad mem "download stream.c"; }
-  fi
-  if [ -s "$src" ] && need gcc; then
+  local src=$OUT/stream.c n nt
+  local fetched=0
+  if stream_fetch "$src"; then fetched=1; echo "stream: $STREAM_SOURCE_NOTE" >> "$OUT/info.txt"
+  else bad mem "stream.c" "not fetched or not verified, see run.log"; fi
+  if [ "$fetched" = 1 ] && need gcc; then
     n=$(awk -v m="$MEM_AVAIL_KB" 'BEGIN{n=int(m*1024*0.30/24); if(n>100000000)n=100000000; print n}')
     [ "$QUICK" = 1 ] && n=20000000
     nt=$(T 20 3)
@@ -34,9 +39,9 @@ stage_mem_run() {
       cp=$(awk '/^Copy:/{print $2}' "$OUT/stream.txt"); tr=$(awk '/^Triad:/{print $2}' "$OUT/stream.txt")
       [ -n "$tr" ] && rec mem.stream.triad.max "$tr" "$n" && ok mem stream || bad mem stream
       [ -n "$cp" ] && rec mem.stream.copy.max "$cp" "$n"
-      rm -f "$OUT/stream"
+      rm -f "$OUT/stream" "$src"
     else bad mem "compile stream" "see stream-build.log"; fi
-  else skip mem stream "stream.c or gcc missing"; fi
+  elif [ "$fetched" = 1 ]; then skip mem stream "gcc missing"; fi
   local lat; lat=$(dpkg -L lmbench 2>/dev/null | grep -m1 'lat_mem_rd$')
   if [ -n "$lat" ]; then
     local mb; mb=$(awk -v m="$MEM_AVAIL_KB" -v q="$QUICK" 'BEGIN{x=int(m/1024*0.30); lim=(q==1)?64:2048; if(x>lim)x=lim; print x}')

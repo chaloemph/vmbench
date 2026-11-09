@@ -65,6 +65,12 @@ if [ -n "$fixture" ]; then
   run bash -c "cd '$TMP/elsewhere' && python3 -I '$ROOT/report.py' show '$d'"
   [ "$rcvm" = "$RC" ] && [ "$viavm" = "$OUTPUT" ] && [ "$RC" = 0 ] && check "report show is the same as report.py show" 0 || check "report show is the same as report.py show" 1 "rc=$rcvm/$RC"
 else check "report show is the same as report.py show" 1 "no fixture found"; fi
+run bash "$VM" report show "$ROOT/tests/fixtures/vm-a" --no-files --lang th
+[ "$RC" = 0 ] && [[ $OUTPUT == *"สภาพแวดล้อม"* ]] && check "report show --lang th prints Thai" 0 || check "report show --lang th prints Thai" 1 "rc=$RC"
+run bash "$VM" report compare "$ROOT/tests/fixtures/vm-a" "$ROOT/tests/fixtures/vm-b" --no-files
+[ "$RC" = 0 ] && [[ $OUTPUT == *"Verdict"* ]] && check "report compare is English by default" 0 || check "report compare is English by default" 1 "rc=$RC"
+run env VMBENCH_LANG=th bash "$VM" report show "$ROOT/tests/fixtures/vm-a" --no-files
+[ "$RC" = 0 ] && [[ $OUTPUT == *"สภาพแวดล้อม"* ]] && check "VMBENCH_LANG=th is passed through vmbench report" 0 || check "VMBENCH_LANG=th is passed through vmbench report" 1 "rc=$RC"
 
 # --- setup (only the error paths: the real scripts download files and use sudo)
 expect "setup without a target"                   2 "setup needs a target"      bash "$VM" setup

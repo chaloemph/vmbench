@@ -4,7 +4,7 @@ One-command VM performance benchmark for CPU, memory, disk, PostgreSQL, network 
 
 vmbench runs a fixed set of well-known tools (sysbench, 7-Zip, OpenSSL, STREAM, lmbench, fio, pgbench, iperf3, sockperf, stressapptest and [cpubench](https://github.com/chaloemph/cpubench)) inside a Linux VM, records every value, and turns the results into tables. It can also compare two or more runs and say which side is better, without calling a difference a win when it is smaller than the run-to-run noise.
 
-> **Status: early version.** It has been run end to end for the `cpu`, `mem`, `disk` and `web` stages on Ubuntu 24.04 KVM guests (x86_64 and aarch64). The `pg`, `net` and `burnin` stages passed their pre-flight checks but have not yet been run to completion on real machines. The report text is currently in Thai (English is planned). There is no release yet, so use a clone of this repository.
+> **Status: early version.** It has been run end to end for the `cpu`, `mem`, `disk` and `web` stages on Ubuntu 24.04 KVM guests (x86_64 and aarch64). The `pg`, `net` and `burnin` stages passed their pre-flight checks but have not yet been run to completion on real machines. Reports are in English; `--lang th` gives the Thai text of earlier versions. There is no release yet, so use a clone of this repository.
 
 ## What it measures
 
@@ -30,7 +30,7 @@ Ubuntu 24.04 (other recent Linux distributions should work but are untested), `b
 sudo apt-get install -y sysbench fio 7zip iperf3 sockperf stressapptest lmbench gcc numactl sysstat jq tmux postgresql postgresql-contrib
 ```
 
-Running the benchmark itself needs no `sudo`. The test files are created under `~/bench-data` (8 GB for `disk`, so keep at least 15 GB free).
+The `mem` stage compiles STREAM from a pinned source file, see [STREAM source](#stream-source). Running the benchmark itself needs no `sudo`. The test files are created under `~/bench-data` (8 GB for `disk`, so keep at least 15 GB free).
 
 ## Quick start
 
@@ -74,6 +74,24 @@ Before anything runs, every selected stage is checked (missing tools, missing cp
 
 Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (cpu repeats, default 3), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
 
+### STREAM source
+
+The `mem` stage compiles `stream.c` from the official [jeffhammond/STREAM](https://github.com/jeffhammond/STREAM) repository. The file is pinned, so every run measures with the same source, and it is checked before it is compiled:
+
+- commit `6703f7504a38a8da96b353cadafa64d3c2d7a2d3`
+- URL `https://raw.githubusercontent.com/jeffhammond/STREAM/6703f7504a38a8da96b353cadafa64d3c2d7a2d3/stream.c`
+- sha256 `c388924eb140fda95f534cdb808ae7f1f8ebb18da41d8aec1b512a3c8d303c9b`
+
+A file with another hash (a changed download, a stale copy in `~/bench-cache/stream.c`, a wrong local file) is never compiled: the step is recorded as `FAIL` in `status.tsv` with the expected and the actual hash in `run.log`. The cached copy is checked too, and replaced when it does not match. The source that was used is written to `info.txt` (`stream: ...`).
+
+| Variable | Meaning |
+|---|---|
+| `STREAM_C=/path/to/stream.c` | offline: use this file instead of downloading it. It must have the pinned sha256 as well |
+| `STREAM_SKIP_CHECK=1` | do not check the hash (for a deliberately different STREAM). Warns loudly and `info.txt` says `UNVERIFIED`; do not compare such a run with others |
+| `STREAM_URL=...` | download from somewhere else (a mirror); the hash is still checked |
+
+`bash lib/stream.sh [DEST]` fetches and checks the file without running a stage. To move the pin, change `STREAM_COMMIT` and `STREAM_SHA256` in `lib/stream.sh` together and update this section and `docs/tests.md`.
+
 ### PostgreSQL stage
 
 `vmbench setup postgres` (or `bash setup-postgres-bench.sh`) creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster.
@@ -86,11 +104,12 @@ With `RAW_DEV=/dev/sdX CONFIRM_WIPE=yes` the `disk` and `burnin` stages write to
 
 Every run also writes `meta.json` (vmbench and cpubench version, label, stages, `QUICK`, start and end time in UTC, architecture, vCPU count; no host name or address). `report.py` reads it, and falls back to `info.txt` for runs that have none. A `meta.json` whose `end_utc` is `null` belongs to a run that did not finish.
 
-Every run ends by printing tables and writing `report.md` and `report.html` into the result folder. You can also run the report on its own:
+Every run ends by printing tables and writing `report.md` and `report.html` into the result folder. The text is English. `--lang th` (or `VMBENCH_LANG=th`) gives the Thai text of earlier versions: same numbers and verdicts, only the words differ. You can also run the report on its own:
 
 ```bash
 ./vmbench report show    ~/bench-results/vm-a
 ./vmbench report compare ~/bench-results/vm-a ~/bench-results/vm-b   # first folder is the baseline
+./vmbench report show    ~/bench-results/vm-a --lang th               # Thai text
 ```
 
 (`python3 report.py show|compare ...` does the same.) `compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only.
@@ -122,7 +141,8 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 | `run-benchmark.sh` | compatibility wrapper, the same as `vmbench run` |
 | `lib/` | shared helpers: `common.sh` (logging, `die`), `metrics.sh` (the metric table and `rec`), `preflight.sh`, `rawdev.sh` (raw-device safety), `meta.sh` (`meta.json`), `stages.sh` (stage loader), `run.sh` (option parsing and the run), `run-usage.txt` (the `--help` text) |
 | `stages/<stage>.sh` | one file per stage: `cpu`, `mem`, `disk`, `pg`, `net`, `web`, `burnin`, `info`. Adding a stage means adding one file, see [docs/tests.md](docs/tests.md) |
-| `report.py` | tables and comparisons (standard library only) |
+| `lib/stream.sh` | the pinned STREAM source: URL, sha256, download and check |
+| `report.py` | tables and comparisons, English and Thai message catalogs (standard library only) |
 | `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage; how to add a stage |
 | `setup/cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
 | `setup/postgres.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
@@ -134,7 +154,7 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 bash tests/run.sh
 ```
 
-runs the Python tests for `report.py` and the metric IDs (the table in `lib/metrics.sh`, `docs/tests.md` and the old-format mapping must agree), the command line tests for `vmbench` and `run-benchmark.sh`, and a test that every file in `stages/` defines the required functions. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
+runs the Python tests for `report.py` (including that the English and Thai message catalogs have the same keys and placeholders, and that no Thai appears in English output) and the metric IDs (the table in `lib/metrics.sh`, `docs/tests.md` and the old-format mapping must agree), the command line tests for `vmbench` and `run-benchmark.sh`, a test that every file in `stages/` defines the required functions, and tests of the STREAM pin with a synthetic `stream.c`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
 
 CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n` and ShellCheck (`-x`, warnings and errors) on every shell file including `lib/` and `stages/`, and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
 

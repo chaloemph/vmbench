@@ -5,6 +5,7 @@
 #   vmbench list                            show the stages and whether this machine is ready for them (= run --list)
 #   vmbench report show DIR                 tables for one result folder          (wraps report.py)
 #   vmbench report compare DIR DIR [DIR..]  compare result folders, first is the baseline
+#                                           (both: --lang th or VMBENCH_LANG=th for Thai text, English by default)
 #   vmbench setup cpubench|postgres         download cpubench / create the PostgreSQL cluster for the pg stage
 #   vmbench version                         print the version
 #   vmbench help                            this text
@@ -27,6 +28,8 @@ export VMBENCH_HOME
 . "$VMBENCH_HOME/lib/common.sh"
 # shellcheck source=lib/metrics.sh
 . "$VMBENCH_HOME/lib/metrics.sh"
+# shellcheck source=lib/stream.sh
+. "$VMBENCH_HOME/lib/stream.sh"
 # shellcheck source=lib/stages.sh
 . "$VMBENCH_HOME/lib/stages.sh"
 # shellcheck source=lib/preflight.sh
