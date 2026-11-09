@@ -9,7 +9,10 @@ Every command prints the tables to stdout and writes report.md + report.html:
   compare  into ./compare-<a>-vs-<b>/ (or --out DIR)
 Use --no-files for stdout only. Standard library only, Python 3.8+.
 
-Values are recomputed from results.tsv (median and CV over the rounds).
+Values are recomputed from results.tsv (median and CV over the rounds). Every value has a stable id such
+as cpu.sysbench.prime.1t (see docs/tests.md). Result folders from before the ids (results.tsv header
+"row", numeric spreadsheet rows) still load: their rows are mapped to the same ids through LEGACY below.
+Run metadata comes from meta.json when the folder has one, otherwise from info.txt.
 Marks:  * measured once, so its variation is unknown    ! CV of 5% or more
 
 Compare verdicts: lower is better for ns/us/ms, error counts and packet loss; higher is better
@@ -19,6 +22,7 @@ import argparse
 import collections
 import csv
 import html
+import json
 import os
 import re
 import statistics
@@ -29,25 +33,113 @@ HIGH_CV = 5.0       # % - mark a metric as noisy from here on
 MIN_DIFF = 1.0      # % - smaller differences are never called a win
 HIGH_STEAL = 1.0    # % - average CPU steal worth warning about
 
-SECTIONS = [("CPU", 0, 23), ("Memory", 24, 32), ("Disk", 33, 46), ("PostgreSQL", 47, 49),
-            ("Network", 50, 54), ("Web", 55, 59), ("Burn-in", 60, 999)]
 INFO_SECTION = "ข้อมูลประกอบ"
+# the first part of an id is its stage; this is also the order of the sections in the tables
+STAGE_SECTIONS = collections.OrderedDict([("cpu", "CPU"), ("mem", "Memory"), ("disk", "Disk"), ("pg", "PostgreSQL"),
+                                          ("net", "Network"), ("web", "Web"), ("burnin", "Burn-in"),
+                                          ("info", INFO_SECTION)])
+# row ranges of the old numeric format, only used to place rows without a LEGACY entry in a stage
+LEGACY_STAGES = [("cpu", 0, 23), ("mem", 24, 32), ("disk", 33, 46), ("pg", 47, 49),
+                 ("net", 50, 54), ("web", 55, 59), ("burnin", 60, 999)]
+
+# Old results.tsv files (header "row") name a test by spreadsheet row number and metric text. This table maps
+# them to the stable ids. (row, regex for the metric text without its thread suffix, id). A thread suffix
+# in the old text adds ".1t" or ".max" to the id; ids that already end in a variant are used as they are.
+# The order is the order of the tables. tests/test_ids.py checks it against the table in run-benchmark.sh.
+LEGACY = [
+    ("7", r"sysbench cpu", "cpu.sysbench.prime"),
+    ("8", r"sysbench cpu", "cpu.sysbench.prime"),
+    ("10", r"7z rating", "cpu.7z.rating"),
+    ("11", r"cpubench crypto/aes-gcm", "cpu.cpubench.crypto.aes-gcm"),
+    ("11", r"openssl aes-256-gcm", "cpu.openssl.aes-256-gcm"),
+    ("12", r"cpubench crypto/ecdsa-p256", "cpu.cpubench.crypto.ecdsa-p256"),
+    ("13", r"cpubench crypto/rsa2048-sign", "cpu.cpubench.crypto.rsa2048-sign"),
+    ("14", r"cpubench crypto/sha256", "cpu.cpubench.crypto.sha256"),
+    ("15", r"cpubench float/fft", "cpu.cpubench.float.fft"),
+    ("16", r"cpubench float/matmul", "cpu.cpubench.float.matmul"),
+    ("17", r"cpubench float/nbody", "cpu.cpubench.float.nbody"),
+    ("18", r"cpubench int/compress", "cpu.cpubench.int.compress"),
+    ("19", r"cpubench int/decompress", "cpu.cpubench.int.decompress"),
+    ("20", r"cpubench int/hashmap", "cpu.cpubench.int.hashmap"),
+    ("21", r"cpubench int/json", "cpu.cpubench.int.json"),
+    ("22", r"cpubench int/regex", "cpu.cpubench.int.regex"),
+    ("23", r"cpubench int/sort", "cpu.cpubench.int.sort"),
+    ("26", r"stream triad", "mem.stream.triad.max"),
+    ("27", r"lat_mem_rd -t \d+MB", "mem.lmbench.lat-mem-rd.1t"),
+    ("28", r"stream copy", "mem.stream.copy.max"),
+    ("33", r"fio randwrite 4k qd32x4", "disk.fio.randwrite-4k.qd32x4"),
+    ("33", r"steadystate attained \(1=yes\)", "disk.fio.randwrite-4k.steadystate"),
+    ("34", r"fio randread 4k qd1 p99", "disk.fio.randread-4k.qd1.p99"),
+    ("34", r"fio randread 4k qd1 p99\.9", "disk.fio.randread-4k.qd1.p999"),
+    ("35", r"fio randread 4k qd32x4", "disk.fio.randread-4k.qd32x4"),
+    ("36", r"fio mixed 70/30 read", "disk.fio.mixed-70-30-4k.read"),
+    ("36", r"fio mixed 70/30 write", "disk.fio.mixed-70-30-4k.write"),
+    ("37", r"fio seq write 1M", "disk.fio.seq-write-1m"),
+    ("37", r"fio seq read 1M", "disk.fio.seq-read-1m"),
+] + [("38", rf"fio randread 4k qd{q}", f"disk.fio.randread-4k.sweep-qd{q}") for q in (1, 4, 16, 32, 64, 128)] + [
+    ("40", r"fio randwrite 8k", "disk.fio.db-randwrite-8k"),
+    ("41", r"fio randrw 70/30 8k read", "disk.fio.db-randrw-8k.read"),
+    ("41", r"fio randrw 70/30 8k write", "disk.fio.db-randrw-8k.write"),
+    ("42", r"fio seqwrite 1M", "disk.fio.db-seqwrite-1m"),
+    ("43", r"fio randread 8k", "disk.fio.db-randread-8k"),
+    ("44", r"wal fdatasync avg", "disk.wal.fdatasync.avg"),
+    ("45", r"wal fdatasync p99", "disk.wal.fdatasync.p99"),
+    ("46", r"wal commit iops qd1", "disk.wal.commit-iops.qd1"),
+    ("47", r"pgbench tpcb-like tps \(-c \d+\)", "pg.pgbench.tpcb.tps"),
+    ("48", r"tps stability 100\*\(1-cv\)", "pg.pgbench.tpcb.stability"),
+    ("49", r"pgbench single-session latency", "pg.pgbench.latency.single"),
+    ("51", r"iperf3 tcp tx->peer", "net.iperf3.tcp.tx"),
+    ("51", r"iperf3 tcp peer->rx", "net.iperf3.tcp.rx"),
+    ("51", r"iperf3 tcp bidir total", "net.iperf3.tcp.bidir"),
+    ("52", r"sockperf ping-pong avg \(one-way\)", "net.sockperf.pingpong.avg"),
+    ("52", r"sockperf ping-pong p99", "net.sockperf.pingpong.p99"),
+    ("53", r"iperf3 udp 64B packets sent", "net.iperf3.udp.pps"),
+    ("53", r"iperf3 udp lost packets %", "net.iperf3.udp.loss"),
+    ("55", r"cpubench web mix max RPS @ SLO \(loopback\)", "web.cpubench.mix.max-rps"),
+    ("65", r"burn-in errors \(\d+s\)", "burnin.errors"),
+    ("info", r"cpu steal avg", "info.cpu.steal.avg"),
+    ("info", r"cpu steal max", "info.cpu.steal.peak"),
+    ("info", r"fio fill write 1M", "info.fio.fill-write-1m"),
+]
+VARIANTS = ("1t", "max")
+
+
+def legacy_id(row, base, variant):
+    """Stable id for a row of an old results.tsv. base is the metric text without array size and thread
+    suffix, variant is "1t", "max" or "". Rows that LEGACY does not know get <stage>.row<row>.<text>."""
+    for lrow, pattern, ident in LEGACY:
+        if lrow == row and re.fullmatch(pattern, base):
+            return f"{ident}.{variant}" if variant else ident
+    stage = "info"
+    if row.isdigit():
+        stage = next((st for st, lo, hi in LEGACY_STAGES if lo <= int(row) <= hi), "info")
+    slug = re.sub(r"[^a-z0-9]+", "-", f"{base} {variant}".lower()).strip("-")
+    return f"{stage}.row{row}.{slug}"
+
+
+def id_base(ident):
+    """The id without its .1t / .max suffix: the test, whatever the thread count."""
+    head, _, tail = ident.rpartition(".")
+    return head if tail in VARIANTS and head else ident
+
+
+_RANK = {}
+for _i, (_r, _p, _ident) in enumerate(LEGACY):
+    _RANK.setdefault(_ident, _i)
+
+
+def id_key(ident):
+    """Sort key: stage order, then the order of the tests (LEGACY), then the order they ran in."""
+    stage = list(STAGE_SECTIONS).index(ident.split(".")[0]) if ident.split(".")[0] in STAGE_SECTIONS else len(STAGE_SECTIONS)
+    return (stage, _RANK.get(id_base(ident), _RANK.get(ident, len(LEGACY))))
 
 
 class InputError(Exception):
     pass
 
 
-def section_of(row):
-    if row.isdigit():
-        for name, lo, hi in SECTIONS:
-            if lo <= int(row) <= hi:
-                return name
-    return INFO_SECTION
-
-
-def row_key(row):
-    return (0, int(row)) if row.isdigit() else (1, 0)
+def section_of(ident):
+    return STAGE_SECTIONS.get(ident.split(".")[0], INFO_SECTION)
 
 
 def direction(metric, unit):
@@ -59,7 +151,7 @@ def direction(metric, unit):
     return 1
 
 
-Metric = collections.namedtuple("Metric", "row name base variant unit values median cv")
+Metric = collections.namedtuple("Metric", "id name base variant unit values median cv")
 
 
 class Run:
@@ -69,6 +161,8 @@ class Run:
         if not os.path.isfile(res):
             raise InputError(f"{path}: results.tsv not found (is this a run-benchmark.sh output folder?)")
         self.info = self._read_info(os.path.join(path, "info.txt"))
+        self.meta, self.meta_problem = self._read_meta(os.path.join(path, "meta.json"))
+        self._apply_meta()
         self.label = self.info.get("label") or os.path.basename(self.path)
         self.nproc = self.info.get("nproc", "")
         self.metrics = self._read_results(res)
@@ -97,6 +191,43 @@ class Run:
                 info[key] = m.group(1).strip()
         return info
 
+    @staticmethod
+    def _read_meta(path):
+        """(meta dict, problem text). A folder without meta.json is an old run: no problem, empty dict."""
+        if not os.path.isfile(path):
+            return {}, ""
+        try:
+            with open(path, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, ValueError) as e:
+            return {}, f"meta.json cannot be read ({e.__class__.__name__}), using info.txt"
+        if not isinstance(meta, dict):
+            return {}, "meta.json is not a JSON object, using info.txt"
+        return meta, ""
+
+    def _apply_meta(self):
+        """meta.json wins over info.txt for the keys it has; everything else keeps coming from info.txt."""
+        def text(key):
+            v = self.meta.get(key)
+            if isinstance(v, bool):
+                return "1" if v else "0"
+            return str(v) if isinstance(v, (str, int, float)) and str(v) != "" else None
+
+        for meta_key, info_key in (("label", "label"), ("nproc", "nproc"), ("ram_gb", "ram_gb"), ("quick", "quick"),
+                                   ("rounds", "rounds"), ("cpubench_version", "cpubench"), ("start_utc", "date")):
+            if text(meta_key) is not None:
+                self.info[info_key] = text(meta_key)
+
+    @property
+    def version(self):
+        v = self.meta.get("vmbench_version")
+        return v if isinstance(v, str) and v else ""
+
+    @property
+    def stages(self):
+        v = self.meta.get("stages")
+        return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
     def _split_threads(self, name):
         """'x 8t' -> ('x', 'max') when 8 is this machine's vCPU count, so 8 and 16 vCPU runs still pair up."""
         m = re.match(r"^(.*) (\d+)t$", name)
@@ -112,9 +243,13 @@ class Run:
     def _read_results(self, path):
         raw = collections.OrderedDict()
         self.stream_n = ""
+        legacy = True   # no header at all means the old format
         with open(path, encoding="utf-8", errors="replace", newline="") as f:
             for r in csv.reader(f, delimiter="\t"):
-                if len(r) < 5 or r[0] == "row":
+                if len(r) < 5:
+                    continue
+                if r[0] in ("row", "id") and r[2] == "value":
+                    legacy = r[0] == "row"
                     continue
                 try:
                     value = float(r[2])
@@ -122,16 +257,17 @@ class Run:
                     continue
                 raw.setdefault((r[0], r[1], r[3]), []).append(value)
         metrics = []
-        for (row, name, unit), values in raw.items():
+        for (key, name, unit), values in raw.items():
             n = re.search(r" \(N=(\d+)\)$", name)
             if n:  # the array size goes to the environment table, so runs with another N still pair up
                 self.stream_n = n.group(1)
                 name = name[:n.start()]
             base, variant = self._split_threads(name)
+            ident = legacy_id(key, base, variant) if legacy else key
             mean = statistics.mean(values)
             cv = statistics.pstdev(values) / abs(mean) * 100 if len(values) > 1 and mean else None
-            metrics.append(Metric(row, name, base, variant, unit, values, statistics.median(values), cv))
-        metrics.sort(key=lambda m: row_key(m.row))  # stable: keeps the order the tests ran in
+            metrics.append(Metric(ident, name, base, variant, unit, values, statistics.median(values), cv))
+        metrics.sort(key=lambda m: id_key(m.id))  # stable: keeps the order the tests ran in
         return metrics
 
     @staticmethod
@@ -153,6 +289,9 @@ class Run:
 
     @property
     def arch(self):
+        meta = self.meta.get("arch")
+        if isinstance(meta, str) and meta:
+            return meta
         return self.info.get("kernel", "").rsplit(" ", 1)[-1]
 
     @property
@@ -199,9 +338,8 @@ def cv_text(m):
     return "n/a" if m.cv is None else f"{m.cv:.1f}%"
 
 
-def row_span(rows):
-    nums = sorted(set(rows), key=row_key)
-    return nums[0] if len(nums) == 1 else f"{nums[0]}–{nums[-1]}"
+def id_span(ids):
+    return ", ".join(sorted({id_base(i) for i in ids}, key=id_key))
 
 
 Table = collections.namedtuple("Table", "title headers aligns rows")   # a cell is text or (text, css class)
@@ -223,6 +361,8 @@ def env_table(runs):
         return ", ".join(f"{k} {v}" for k, v in sorted(c.items())) or "ไม่มี FAIL/SKIP"
 
     fields = [("วันที่รัน", lambda r: r.info.get("date", "-")),
+              ("vmbench", lambda r: r.version or "-"),
+              ("ขั้นตอนที่รัน", lambda r: " ".join(s for s in r.stages if s != "info") or "-"),
               ("CPU", lambda r: r.cpu or "-"),
               ("สถาปัตยกรรม", lambda r: r.arch or "-"),
               ("vCPU / RAM", lambda r: f"{r.info.get('nproc', '-')} / {r.info.get('ram_gb', '-')} GB"),
@@ -247,31 +387,21 @@ def run_warnings(run):
     if avg is not None and avg >= HIGH_STEAL:
         out.append(f"{run.label}: CPU steal เฉลี่ย {num(avg)}% (สูงสุด {num(top)}%) "
                    "host มีโหลดอื่น ผลอาจต่ำกว่าความจริง")
+    if run.meta_problem:
+        out.append(f"{run.label}: {run.meta_problem}")
     for stage, step, result in run.problems:
         out.append(f"{run.label}: {stage} / {step} = {result}")
     noisy = [m.name for m in run.metrics if mark(m) == "!"]
     if noisy:
         out.append(f"{run.label}: ค่าแกว่งเกิน {HIGH_CV:.0f}% ({len(noisy)} ค่า): " + ", ".join(noisy))
-    once = [m for m in run.metrics if len(m.values) < 2 and m.row != "info"]
+    once = [m for m in run.metrics if len(m.values) < 2 and not m.id.startswith("info.")]
     if once and any(len(m.values) > 1 for m in run.metrics):
-        rows = row_span_list(m.row for m in once)
-        out.append(f"{run.label}: วัดรอบเดียว {len(once)} ค่า (แถว {rows}) ยังไม่รู้ว่าแกว่งแค่ไหน")
+        stages = ", ".join(sorted({m.id.split(".")[0] for m in once}, key=lambda s: id_key(s + ".")))
+        out.append(f"{run.label}: วัดรอบเดียว {len(once)} ค่า (ขั้นตอน {stages}) ยังไม่รู้ว่าแกว่งแค่ไหน")
     flag = run.find("steadystate attained (1=yes)")
     if flag and not flag.median:
-        out.append(f"{run.label}: แถว 33 ยังไม่ถึง steady state ค่า IOPS อาจยังไม่นิ่ง")
+        out.append(f"{run.label}: {flag.id} ยังไม่ถึง steady state ค่า IOPS อาจยังไม่นิ่ง")
     return out
-
-
-def row_span_list(rows):
-    nums = sorted({int(r) for r in rows if r.isdigit()})
-    parts, i = [], 0
-    while i < len(nums):
-        j = i
-        while j + 1 < len(nums) and nums[j + 1] == nums[j] + 1:
-            j += 1
-        parts.append(str(nums[i]) if i == j else f"{nums[i]}–{nums[j]}")
-        i = j + 1
-    return ", ".join(parts)
 
 
 def compare_warnings(runs):
@@ -287,6 +417,9 @@ def compare_warnings(runs):
     if len(set(versions)) > 1:
         out.append("cpubench คนละเวอร์ชัน ผลกลุ่ม cpubench เทียบกันไม่ได้ตรง ๆ: "
                    + ", ".join(f"{r.label}={v}" for r, v in zip(runs, versions)))
+    known = [r.version for r in runs]
+    if all(known) and len(set(known)) > 1:
+        out.append("vmbench คนละเวอร์ชัน: " + ", ".join(f"{r.label}={r.version}" for r in runs))
     differs("จำนวนรอบ", lambda r: r.info.get("rounds", "?"))
     differs("ขนาดไฟล์ fio", lambda r: r.info.get("fio_size", "?"))
     differs("raw device", lambda r: r.info.get("raw_dev", "?"))
@@ -300,7 +433,7 @@ def compare_warnings(runs):
 
 
 def disk_warning(runs):
-    tested = [r for r in runs if any(section_of(m.row) == "Disk" for m in r.metrics)]
+    tested = [r for r in runs if any(section_of(m.id) == "Disk" for m in r.metrics)]
     if any(r.info.get("raw_dev", "none") == "none" for r in tested):
         return ["Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
                 "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า"]
@@ -312,14 +445,14 @@ def disk_warning(runs):
 def show_tables(run):
     groups = collections.OrderedDict()
     for m in run.metrics:
-        groups.setdefault(section_of(m.row), collections.OrderedDict()).setdefault((m.base, m.unit), []).append(m)
+        groups.setdefault(section_of(m.id), collections.OrderedDict()).setdefault((m.base, m.unit), []).append(m)
     tables = []
     for section, items in groups.items():
         threaded = any(m.variant for ms in items.values() for m in ms)
         rows = []
         for (base, unit), ms in items.items():
             by = {m.variant: m for m in ms}
-            head = [row_span([m.row for m in ms]), base, unit]
+            head = [id_span([m.id for m in ms]), base, unit]
             if threaded:
                 one, top = by.get("1t"), by.get("max")
                 plain = by.get("")
@@ -334,9 +467,9 @@ def show_tables(run):
                 rows.append(head + [value(m), str(len(m.values)), cv_text(m)])
         if threaded:
             top = f"max ({run.nproc}t)" if run.nproc else "max"
-            headers = ["แถว", "ทดสอบ", "หน่วย", "1 thread", top, "รอบ", "CV"]
+            headers = ["ID", "ทดสอบ", "หน่วย", "1 thread", top, "รอบ", "CV"]
         else:
-            headers = ["แถว", "ทดสอบ", "หน่วย", "ค่า", "รอบ", "CV"]
+            headers = ["ID", "ทดสอบ", "หน่วย", "ค่า", "รอบ", "CV"]
         aligns = ["l", "l", "l"] + ["r"] * (len(headers) - 3)
         tables.append(Table(section, headers, aligns, rows))
     return tables
@@ -365,18 +498,18 @@ def compare_tables(runs):
     keys = collections.OrderedDict()
     for run in runs:
         for m in run.metrics:
-            keys.setdefault((m.row, m.base, m.variant, m.unit), None)
-    lookup = [{(m.row, m.base, m.variant, m.unit): m for m in run.metrics} for run in runs]
+            keys.setdefault((m.id, m.base, m.variant, m.unit), None)
+    lookup = [{(m.id, m.base, m.variant, m.unit): m for m in run.metrics} for run in runs]
 
     groups = collections.OrderedDict()
-    for key in sorted(keys, key=lambda k: row_key(k[0])):
+    for key in sorted(keys, key=lambda k: id_key(k[0])):
         groups.setdefault(section_of(key[0]), []).append(key)
 
     tables = []
     tally = collections.OrderedDict()
     two = len(runs) == 2
     for section, section_keys in groups.items():
-        headers = ["แถว", "ทดสอบ", "หน่วย", base.label + " (baseline)"]
+        headers = ["ID", "ทดสอบ", "หน่วย", base.label + " (baseline)"]
         aligns = ["l", "l", "l", "r"]
         for run in runs[1:]:
             headers += [run.label, "ต่าง"]
@@ -385,10 +518,10 @@ def compare_tables(runs):
             aligns.append("l")
         rows = []
         for key in section_keys:
-            row, name, variant, unit = key
+            ident, name, variant, unit = key
             shown = f"{name} {variant}" if variant else name
             b = lookup[0].get(key)
-            cells = [row, shown, unit, value(b)]
+            cells = [id_base(ident), shown, unit, value(b)]
             for i, run in enumerate(runs[1:], 1):
                 o = lookup[i].get(key)
                 cells.append(value(o))

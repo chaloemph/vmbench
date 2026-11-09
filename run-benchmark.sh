@@ -14,16 +14,18 @@
 #   --peer HOST   peer machine for the net stage; it must run: iperf3 -s -D ; sockperf server -i 0.0.0.0 &
 #   --hours N     length of the burn-in (default: 48; QUICK=1 always runs 40 seconds)
 #   --list        show the stages, their duration and whether this machine is ready for them
+#   --metrics     print the table of metric ids (id|unit|direction|tool|label|what it measures) and exit
 #   -h, --help    show this text
 #
 # Stages (ram is accepted for mem). info always runs, because report.py needs it.
-#   cpu     rows 7, 8, 10-23   default
-#   mem     rows 26-28         default
-#   disk    rows 33-38, 40-46  default
-#   pg      rows 47-49         needs setup-postgres-bench.sh
-#   net     rows 51-53         needs --peer
-#   web     row 55
-#   burnin  row 65             48 hours unless --hours says otherwise
+#   cpu     ids cpu.*          default
+#   mem     ids mem.*          default
+#   disk    ids disk.*         default
+#   pg      ids pg.*           needs setup-postgres-bench.sh
+#   net     ids net.*          needs --peer
+#   web     ids web.*
+#   burnin  ids burnin.*       48 hours unless --hours says otherwise
+# Every result has a stable id such as cpu.sysbench.prime.1t, listed by --metrics and in docs/tests.md.
 #
 # Every selected stage is checked before anything runs. If something is missing, the script lists all of it
 # and exits with code 2. A run of everything that needs no peer is: --with web,pg  (add net when a peer is available)
@@ -38,7 +40,7 @@
 #   DATA_DIR     folder for fio test files                     (default: ~/bench-data)
 #   FIO_SIZE     size of the fio test file                     (default: 8G)
 #   RAW_DEV      raw test disk, e.g. /dev/sdb (needs CONFIRM_WIPE=yes, ERASES THE WHOLE DISK)
-#   DB_DIR WAL_DIR  folders for rows 40-43 and 44-46           (default: DATA_DIR; e.g. /pgdata /pgwal)
+#   DB_DIR WAL_DIR  folders for disk.fio.db-* and disk.wal.*           (default: DATA_DIR; e.g. /pgdata /pgwal)
 #   PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench)
 #   PEER         same as --peer
 #   BURNIN_HOURS same as --hours
@@ -51,6 +53,7 @@ CB=${CB:-$HOME/cpubench-current}
 DATA_DIR=${DATA_DIR:-$HOME/bench-data}
 FIO_SIZE=${FIO_SIZE:-8G}
 RAW_DEV=${RAW_DEV:-}
+SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 DB_DIR=${DB_DIR:-$DATA_DIR}
 WAL_DIR=${WAL_DIR:-$DATA_DIR}
 PEER=${PEER:-}
@@ -64,6 +67,94 @@ DEFAULT_STAGES="cpu mem disk"
 
 die() { printf 'run-benchmark.sh: %s\n' "$*" >&2; exit 2; }
 need() { command -v "$1" >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------- metric ids
+# The one place where result ids are defined. Columns: id|unit|direction|tool|label|what it measures
+#   id         <stage>.<tool>.<test>[.<variant>], lowercase, dots between parts; a .1t or .max suffix means one thread or all vCPUs
+#   direction  higher or lower is better; none = context value that is never judged
+#   label      the text written to the metric column of results.tsv: {t} is the thread count, {x} a per-run value (see rec)
+# docs/tests.md repeats this table, and tests/test_ids.py fails if the two differ.
+metric_table() {
+  cat <<'METRICS'
+cpu.sysbench.prime.1t|events/s|higher|sysbench|sysbench cpu {t}t|Prime-number counting (--cpu-max-prime=20000), 1 thread
+cpu.sysbench.prime.max|events/s|higher|sysbench|sysbench cpu {t}t|Prime-number counting (--cpu-max-prime=20000), all vCPUs
+cpu.7z.rating.max|MIPS|higher|7-Zip|7z rating {t}t|7-Zip built-in benchmark total rating, all vCPUs
+cpu.openssl.aes-256-gcm.1t|MB/s|higher|OpenSSL|openssl aes-256-gcm {t}t|AES-256-GCM throughput (openssl speed -evp), 1 thread
+cpu.openssl.aes-256-gcm.max|MB/s|higher|OpenSSL|openssl aes-256-gcm {t}t|AES-256-GCM throughput (openssl speed -evp), all vCPUs
+cpu.cpubench.crypto.aes-gcm.1t|varies|higher|cpubench|cpubench crypto/aes-gcm {t}t|AES-GCM (median of cpubench iterations), 1 thread
+cpu.cpubench.crypto.aes-gcm.max|varies|higher|cpubench|cpubench crypto/aes-gcm {t}t|AES-GCM (median of cpubench iterations), all vCPUs
+cpu.cpubench.crypto.ecdsa-p256.1t|varies|higher|cpubench|cpubench crypto/ecdsa-p256 {t}t|ECDSA P-256 signing (median of cpubench iterations), 1 thread
+cpu.cpubench.crypto.ecdsa-p256.max|varies|higher|cpubench|cpubench crypto/ecdsa-p256 {t}t|ECDSA P-256 signing (median of cpubench iterations), all vCPUs
+cpu.cpubench.crypto.rsa2048-sign.1t|varies|higher|cpubench|cpubench crypto/rsa2048-sign {t}t|RSA-2048 signing (median of cpubench iterations), 1 thread
+cpu.cpubench.crypto.rsa2048-sign.max|varies|higher|cpubench|cpubench crypto/rsa2048-sign {t}t|RSA-2048 signing (median of cpubench iterations), all vCPUs
+cpu.cpubench.crypto.sha256.1t|varies|higher|cpubench|cpubench crypto/sha256 {t}t|SHA-256 (median of cpubench iterations), 1 thread
+cpu.cpubench.crypto.sha256.max|varies|higher|cpubench|cpubench crypto/sha256 {t}t|SHA-256 (median of cpubench iterations), all vCPUs
+cpu.cpubench.float.fft.1t|varies|higher|cpubench|cpubench float/fft {t}t|FFT (median of cpubench iterations), 1 thread
+cpu.cpubench.float.fft.max|varies|higher|cpubench|cpubench float/fft {t}t|FFT (median of cpubench iterations), all vCPUs
+cpu.cpubench.float.matmul.1t|varies|higher|cpubench|cpubench float/matmul {t}t|Matrix multiplication (median of cpubench iterations), 1 thread
+cpu.cpubench.float.matmul.max|varies|higher|cpubench|cpubench float/matmul {t}t|Matrix multiplication (median of cpubench iterations), all vCPUs
+cpu.cpubench.float.nbody.1t|varies|higher|cpubench|cpubench float/nbody {t}t|N-body simulation (median of cpubench iterations), 1 thread
+cpu.cpubench.float.nbody.max|varies|higher|cpubench|cpubench float/nbody {t}t|N-body simulation (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.compress.1t|varies|higher|cpubench|cpubench int/compress {t}t|Compression (median of cpubench iterations), 1 thread
+cpu.cpubench.int.compress.max|varies|higher|cpubench|cpubench int/compress {t}t|Compression (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.decompress.1t|varies|higher|cpubench|cpubench int/decompress {t}t|Decompression (median of cpubench iterations), 1 thread
+cpu.cpubench.int.decompress.max|varies|higher|cpubench|cpubench int/decompress {t}t|Decompression (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.hashmap.1t|varies|higher|cpubench|cpubench int/hashmap {t}t|Hash map operations (median of cpubench iterations), 1 thread
+cpu.cpubench.int.hashmap.max|varies|higher|cpubench|cpubench int/hashmap {t}t|Hash map operations (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.json.1t|varies|higher|cpubench|cpubench int/json {t}t|JSON encode/decode (median of cpubench iterations), 1 thread
+cpu.cpubench.int.json.max|varies|higher|cpubench|cpubench int/json {t}t|JSON encode/decode (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.regex.1t|varies|higher|cpubench|cpubench int/regex {t}t|Regular expressions (median of cpubench iterations), 1 thread
+cpu.cpubench.int.regex.max|varies|higher|cpubench|cpubench int/regex {t}t|Regular expressions (median of cpubench iterations), all vCPUs
+cpu.cpubench.int.sort.1t|varies|higher|cpubench|cpubench int/sort {t}t|Sorting (median of cpubench iterations), 1 thread
+cpu.cpubench.int.sort.max|varies|higher|cpubench|cpubench int/sort {t}t|Sorting (median of cpubench iterations), all vCPUs
+mem.stream.triad.max|MB/s|higher|STREAM|stream triad (N={x})|Memory bandwidth, triad kernel, all vCPUs
+mem.stream.copy.max|MB/s|higher|STREAM|stream copy (N={x})|Memory bandwidth, copy kernel, all vCPUs
+mem.lmbench.lat-mem-rd.1t|ns|lower|lmbench|lat_mem_rd -t {x}MB|Memory load latency at the largest working set (-t, 1 process)
+disk.fio.randwrite-4k.qd32x4|IOPS|higher|fio|fio randwrite 4k qd32x4|4 KiB random write, queue depth 32 x 4 jobs, after fill to steady state
+disk.fio.randwrite-4k.steadystate|flag|none|fio|steadystate attained (1=yes)|1 if the random-write run reached fio steady state (context, not scored)
+disk.fio.randread-4k.qd1.p99|us|lower|fio|fio randread 4k qd1 p99|4 KiB random read latency, queue depth 1, 99th percentile
+disk.fio.randread-4k.qd1.p999|us|lower|fio|fio randread 4k qd1 p99.9|4 KiB random read latency, queue depth 1, 99.9th percentile
+disk.fio.randread-4k.qd32x4|IOPS|higher|fio|fio randread 4k qd32x4|4 KiB random read, queue depth 32 x 4 jobs
+disk.fio.mixed-70-30-4k.read|IOPS|higher|fio|fio mixed 70/30 read|4 KiB random 70% read / 30% write mix, read side
+disk.fio.mixed-70-30-4k.write|IOPS|higher|fio|fio mixed 70/30 write|4 KiB random 70% read / 30% write mix, write side
+disk.fio.seq-write-1m|MB/s|higher|fio|fio seq write 1M|1 MiB sequential write, queue depth 16
+disk.fio.seq-read-1m|MB/s|higher|fio|fio seq read 1M|1 MiB sequential read, queue depth 16
+disk.fio.randread-4k.sweep-qd1|IOPS|higher|fio|fio randread 4k qd1|4 KiB random read at queue depth 1 (queue-depth sweep)
+disk.fio.randread-4k.sweep-qd4|IOPS|higher|fio|fio randread 4k qd4|4 KiB random read at queue depth 4 (queue-depth sweep)
+disk.fio.randread-4k.sweep-qd16|IOPS|higher|fio|fio randread 4k qd16|4 KiB random read at queue depth 16 (queue-depth sweep)
+disk.fio.randread-4k.sweep-qd32|IOPS|higher|fio|fio randread 4k qd32|4 KiB random read at queue depth 32 (queue-depth sweep)
+disk.fio.randread-4k.sweep-qd64|IOPS|higher|fio|fio randread 4k qd64|4 KiB random read at queue depth 64 (queue-depth sweep)
+disk.fio.randread-4k.sweep-qd128|IOPS|higher|fio|fio randread 4k qd128|4 KiB random read at queue depth 128 (queue-depth sweep)
+disk.fio.db-randwrite-8k|IOPS|higher|fio|fio randwrite 8k|8 KiB random write on files in DB_DIR (database data pattern)
+disk.fio.db-randrw-8k.read|IOPS|higher|fio|fio randrw 70/30 8k read|8 KiB random 70/30 mix on DB_DIR, read side
+disk.fio.db-randrw-8k.write|IOPS|higher|fio|fio randrw 70/30 8k write|8 KiB random 70/30 mix on DB_DIR, write side
+disk.fio.db-seqwrite-1m|MB/s|higher|fio|fio seqwrite 1M|1 MiB sequential write on files in DB_DIR
+disk.fio.db-randread-8k|IOPS|higher|fio|fio randread 8k|8 KiB random read on files in DB_DIR
+disk.wal.fdatasync.avg|ms|lower|fio|wal fdatasync avg|WAL-style 8 KiB write + fdatasync, queue depth 1, mean latency
+disk.wal.fdatasync.p99|ms|lower|fio|wal fdatasync p99|WAL-style 8 KiB write + fdatasync, 99th percentile latency
+disk.wal.commit-iops.qd1|IOPS|higher|fio|wal commit iops qd1|WAL-style commits per second at queue depth 1
+pg.pgbench.tpcb.tps|TPS|higher|pgbench|pgbench tpcb-like tps (-c {x})|TPC-B-like transactions per second with 2 x vCPU clients
+pg.pgbench.tpcb.stability|%|higher|pgbench|tps stability 100*(1-cv)|Steadiness of TPS over the run, 100 x (1 - coefficient of variation)
+pg.pgbench.latency.single|ms|lower|pgbench|pgbench single-session latency|Average transaction latency with one client
+net.iperf3.tcp.tx|Gbps|higher|iperf3|iperf3 tcp tx->peer|TCP throughput to the peer, 8 streams
+net.iperf3.tcp.rx|Gbps|higher|iperf3|iperf3 tcp peer->rx|TCP throughput from the peer, 8 streams
+net.iperf3.tcp.bidir|Gbps|higher|iperf3|iperf3 tcp bidir total|TCP throughput, both directions added
+net.sockperf.pingpong.avg|us|lower|sockperf|sockperf ping-pong avg (one-way)|Average one-way latency (ping-pong)
+net.sockperf.pingpong.p99|us|lower|sockperf|sockperf ping-pong p99|99th percentile latency (ping-pong)
+net.iperf3.udp.pps|Mpps|higher|iperf3|iperf3 udp 64B packets sent|UDP packets sent per second, 64-byte payload
+net.iperf3.udp.loss|%|lower|iperf3|iperf3 udp lost packets %|UDP packet loss at the maximum send rate
+web.cpubench.mix.max-rps|RPS|higher|cpubench|cpubench web mix max RPS @ SLO (loopback)|Highest requests per second within the latency target (loopback)
+burnin.errors|count|lower|stressapptest, fio|burn-in errors ({x}s)|Errors found by the burn-in (memory, disk verify, kernel log)
+info.cpu.steal.avg|%|none|mpstat|cpu steal avg|Average CPU steal during the whole run (context, not scored)
+info.cpu.steal.peak|%|none|mpstat|cpu steal max|Highest CPU steal sample during the run (context, not scored)
+info.fio.fill-write-1m|MB/s|none|fio|fio fill write 1M|Speed of the 1 MiB sequential fill before the disk tests (context, not scored)
+METRICS
+}
+declare -A M_UNIT M_LABEL
+while IFS='|' read -r _id _unit _dir _tool _label _desc; do
+  [ -n "$_id" ] || continue
+  M_UNIT[$_id]=$_unit; M_LABEL[$_id]=$_label
+done < <(metric_table)
 
 usage() { sed -n '2,/^set -uo/{/^set -uo/d;s/^# \{0,1\}//;p}' "${BASH_SOURCE[0]}"; }
 
@@ -126,17 +217,18 @@ check_stage() { # fills PROBLEMS with what stops this stage from running
 
 show_stages() {
   local s rows when time
-  printf '%-7s %-12s %-8s %-12s %s\n' STAGE ROWS DEFAULT TIME READY
+  printf '%-7s %-12s %-8s %-12s %s\n' STAGE METRICS DEFAULT TIME READY
   for s in $ALL_STAGES; do
     case $s in
-      cpu)    rows="7,8,10-23";    when=yes; time="14 min" ;;
-      mem)    rows="26-28";        when=yes; time="1 min" ;;
-      disk)   rows="33-38,40-46";  when=yes; time="71 min" ;;
-      pg)     rows="47-49";        when=no;  time="16 min+load" ;;
-      net)    rows="51-53";        when=no;  time="3 min" ;;
-      web)    rows="55";           when=no;  time="5 min" ;;
-      burnin) rows="65";           when=no;  time="$BURNIN_HOURS h" ;;
+      cpu)    when=yes; time="14 min" ;;
+      mem)    when=yes; time="1 min" ;;
+      disk)   when=yes; time="71 min" ;;
+      pg)     when=no;  time="16 min+load" ;;
+      net)    when=no;  time="3 min" ;;
+      web)    when=no;  time="5 min" ;;
+      burnin) when=no;  time="$BURNIN_HOURS h" ;;
     esac
+    rows=$(metric_table | grep -c "^$s\.")
     check_stage "$s"
     if [ ${#PROBLEMS[@]} -eq 0 ]; then
       printf '%-7s %-12s %-8s %-12s %s\n' "$s" "$rows" "$when" "$time" yes
@@ -170,6 +262,7 @@ while [ $# -gt 0 ]; do
       [[ $val =~ ^[0-9]+(\.[0-9]+)?$ ]] && awk -v h="$val" 'BEGIN{exit !(h>0)}' || die "--hours needs a number above 0, got '$val'"
       BURNIN_HOURS=$val; FLAG_HOURS=1 ;;
     --list) LIST=1 ;;
+    --metrics) metric_table; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option '$1' (see --help)" ;;
   esac
@@ -211,20 +304,53 @@ RAM_GB=$(awk '/MemTotal/{printf "%d", $2/1048576+0.5}' /proc/meminfo)
 MEM_AVAIL_KB=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
 mkdir -p "$OUT" "$DATA_DIR"
 RES=$OUT/results.tsv; STATUS=$OUT/status.tsv
-printf 'row\tmetric\tvalue\tunit\tround\n' > "$RES"
+printf 'id\tmetric\tvalue\tunit\tround\n' > "$RES"
 printf 'stage\tstep\tresult\n' > "$STATUS"
+
+
+# meta.json: what ran and how, without host names or addresses (only LABEL). Written at the start and
+# again at the end; a file whose end_utc is null belongs to a run that did not finish.
+vmbench_version() {
+  if [ -s "$SELF_DIR/VERSION" ]; then head -1 "$SELF_DIR/VERSION"
+  elif need git && git -C "$SELF_DIR" describe --tags --always --dirty 2>/dev/null; then :
+  else echo unknown; fi
+}
+utc_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+START_UTC=$(utc_now)
+write_meta() { # write_meta [END_UTC]
+  need python3 || return 0
+  local cbv=""; [ -x "$CB/cpubench" ] && cbv=$("$CB/cpubench" version 2>/dev/null | head -1)
+  python3 -I - "$OUT/meta.json" "$(vmbench_version)" "$cbv" "$LABEL" "$STAGES" "$QUICK" "$ROUNDS" \
+    "$START_UTC" "${1:-}" "$(uname -m)" "$NPROC" "$RAM_GB" <<'PY'
+import json, os, sys
+(path, ver, cbv, label, stages, quick, rounds, start, end, arch, nproc, ram) = sys.argv[1:]
+meta = {"schema": 1, "vmbench_version": ver, "cpubench_version": cbv or None, "label": label,
+        "stages": stages.split(), "quick": quick == "1", "rounds": int(rounds),
+        "start_utc": start, "end_utc": end or None, "arch": arch, "nproc": int(nproc), "ram_gb": int(ram)}
+with open(path + ".tmp", "w") as f:
+    json.dump(meta, f, indent=2)
+    f.write("\n")
+os.replace(path + ".tmp", path)
+PY
+}
 
 T() { if [ "$QUICK" = 1 ]; then echo "$2"; else echo "$1"; fi; }   # T <full> <quick>
 log() { printf '%s %s\n' "$(date +%T)" "$*" | tee -a "$OUT/run.log"; }
 ROUND=1
-rec() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$ROUND" >> "$RES"; }
+# rec ID VALUE [X [UNIT]]: append one value. The label and unit come from the metric table; X fills {x}
+# in the label (array size, test size, ...), UNIT overrides the table unit (cpubench reports its own).
+rec() {
+  local id=$1 label t
+  if [ -z "${M_LABEL[$id]:-}" ]; then log "[BUG] unknown metric id '$id', value not recorded"; return 1; fi
+  case $id in *.1t) t=1 ;; *) t=$NPROC ;; esac
+  label=${M_LABEL[$id]//\{t\}/$t}; label=${label//\{x\}/${3:-}}
+  printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$label" "$2" "${4:-${M_UNIT[$id]}}" "$ROUND" >> "$RES"
+}
+tv() { if [ "$1" = 1 ]; then echo 1t; else echo max; fi; }   # thread count -> id suffix
 ok() { printf '%s\t%s\tOK\n' "$1" "$2" >> "$STATUS"; }
 bad() { printf '%s\t%s\tFAIL %s\n' "$1" "$2" "${3:-}" >> "$STATUS"; log "[FAIL] $1: $2 ${3:-}"; }
 skip() { printf '%s\t%s\tSKIP %s\n' "$1" "$2" "${3:-}" >> "$STATUS"; log "[SKIP] $1: $2 ${3:-}"; }
 
-declare -A ROWMAP=( [crypto/aes-gcm]=11 [crypto/ecdsa-p256]=12 [crypto/rsa2048-sign]=13 [crypto/sha256]=14
-  [float/fft]=15 [float/matmul]=16 [float/nbody]=17 [int/compress]=18 [int/decompress]=19
-  [int/hashmap]=20 [int/json]=21 [int/regex]=22 [int/sort]=23 )
 
 # ---------------------------------------------------------------- info
 stage_info() {
@@ -256,7 +382,7 @@ stage_info() {
   [ "$FREE_GB" -ge 15 ] || log "[WARN] less than 15 GB free, disk stage will be refused"
 }
 
-# ---------------------------------------------------------------- cpu (rows 7,8,10,11-23)
+# ---------------------------------------------------------------- cpu
 stage_cpu() {
   log "== cpu"
   local r st mt out
@@ -265,12 +391,12 @@ stage_cpu() {
     if need sysbench; then
       st=$(sysbench cpu --cpu-max-prime=20000 --threads=1 --time="$(T 60 5)" run 2>&1 | tee "$OUT/sysbench-st-r$r.txt" | awk '/events per second/{print $4}')
       mt=$(sysbench cpu --cpu-max-prime=20000 --threads="$NPROC" --time="$(T 60 5)" run 2>&1 | tee "$OUT/sysbench-mt-r$r.txt" | awk '/events per second/{print $4}')
-      [ -n "$st" ] && rec 7 "sysbench cpu 1t" "$st" events/s && ok cpu "sysbench st r$r" || bad cpu "sysbench st r$r"
-      [ -n "$mt" ] && rec 8 "sysbench cpu ${NPROC}t" "$mt" events/s && ok cpu "sysbench mt r$r" || bad cpu "sysbench mt r$r"
+      [ -n "$st" ] && rec cpu.sysbench.prime.1t "$st" && ok cpu "sysbench st r$r" || bad cpu "sysbench st r$r"
+      [ -n "$mt" ] && rec cpu.sysbench.prime.max "$mt" && ok cpu "sysbench mt r$r" || bad cpu "sysbench mt r$r"
     else skip cpu sysbench "not installed"; fi
     if need 7z; then
       out=$(7z b -mmt="$NPROC" 2>&1 | tee "$OUT/7z-r$r.txt" | awk '/^Tot:/{print $NF}')
-      [ -n "$out" ] && rec 10 "7z rating ${NPROC}t" "$out" MIPS && ok cpu "7z r$r" || bad cpu "7z r$r"
+      [ -n "$out" ] && rec cpu.7z.rating.max "$out" && ok cpu "7z r$r" || bad cpu "7z r$r"
     else skip cpu 7z "not installed"; fi
     if [ -x "$CB/cpubench" ]; then
       local q=(); [ "$QUICK" = 1 ] && q=(--scale 0.05)
@@ -278,9 +404,10 @@ stage_cpu() {
         --suite crypto,float/fft,float/matmul,float/nbody,int/json,int/regex,int/sort,int/hashmap,int/compress,int/decompress \
         -o "$OUT/cpubench-r$r.json" > "$OUT/cpubench-r$r.log" 2>&1
       if [ -s "$OUT/cpubench-r$r.json" ]; then
-        local n t v u
+        local n t v u id
         while IFS=$'\t' read -r n t v u; do
-          [ -n "${ROWMAP[$n]:-}" ] && rec "${ROWMAP[$n]}" "cpubench $n ${t}t" "$v" "$u"
+          id=cpu.cpubench.${n//\//.}.$(tv "$t")
+          [ -n "${M_LABEL[$id]:-}" ] && rec "$id" "$v" "" "$u"   # benchmarks not in the table are ignored
         done < <(jq -r '.benchmarks[] | [.name,.threads,.stats.median,.unit] | @tsv' "$OUT/cpubench-r$r.json")
         ok cpu "cpubench r$r"
       else bad cpu "cpubench r$r" "see cpubench-r$r.log"; fi
@@ -289,13 +416,13 @@ stage_cpu() {
       local o1 om
       o1=$(openssl speed -seconds "$(T 10 2)" -mr -evp aes-256-gcm 2>/dev/null | awk -F: '/^\+F:/{v=$NF} END{printf "%.1f", v/1e6}')
       om=$(openssl speed -seconds "$(T 10 2)" -mr -multi "$NPROC" -evp aes-256-gcm 2>/dev/null | awk -F: '/^\+F:/{v=$NF} END{printf "%.1f", v/1e6}')
-      rec 11 "openssl aes-256-gcm 1t" "$o1" MB/s; rec 11 "openssl aes-256-gcm ${NPROC}t" "$om" MB/s; ok cpu "openssl r$r"
+      rec cpu.openssl.aes-256-gcm.1t "$o1"; rec cpu.openssl.aes-256-gcm.max "$om"; ok cpu "openssl r$r"
     fi
   done
   ROUND=1
 }
 
-# ---------------------------------------------------------------- mem (rows 26,27,28)
+# ---------------------------------------------------------------- mem 
 stage_mem() {
   log "== mem"
   local cache=$HOME/bench-cache; mkdir -p "$cache"
@@ -313,8 +440,8 @@ stage_mem() {
       OMP_NUM_THREADS=$NPROC OMP_PROC_BIND=spread OMP_PLACES=cores "$OUT/stream" > "$OUT/stream.txt" 2>&1
       local cp tr
       cp=$(awk '/^Copy:/{print $2}' "$OUT/stream.txt"); tr=$(awk '/^Triad:/{print $2}' "$OUT/stream.txt")
-      [ -n "$tr" ] && rec 26 "stream triad (N=$n)" "$tr" MB/s && ok mem stream || bad mem stream
-      [ -n "$cp" ] && rec 28 "stream copy (N=$n)" "$cp" MB/s
+      [ -n "$tr" ] && rec mem.stream.triad.max "$tr" "$n" && ok mem stream || bad mem stream
+      [ -n "$cp" ] && rec mem.stream.copy.max "$cp" "$n"
       rm -f "$OUT/stream"
     else bad mem "compile stream" "see stream-build.log"; fi
   else skip mem stream "stream.c or gcc missing"; fi
@@ -323,11 +450,11 @@ stage_mem() {
     local mb; mb=$(awk -v m="$MEM_AVAIL_KB" -v q="$QUICK" 'BEGIN{x=int(m/1024*0.30); lim=(q==1)?64:2048; if(x>lim)x=lim; print x}')
     "$lat" -t -P 1 -N "$(T 3 1)" "$mb" 128 > "$OUT/lat_mem_rd.txt" 2>&1
     local v; v=$(awk 'NF==2 && $1+0>0 {l=$2} END{print l}' "$OUT/lat_mem_rd.txt")
-    [ -n "$v" ] && rec 27 "lat_mem_rd -t ${mb}MB" "$v" ns && ok mem lat_mem_rd || bad mem lat_mem_rd
+    [ -n "$v" ] && rec mem.lmbench.lat-mem-rd.1t "$v" "$mb" && ok mem lat_mem_rd || bad mem lat_mem_rd
   else skip mem lat_mem_rd "lmbench not installed"; fi
 }
 
-# ---------------------------------------------------------------- disk (rows 33-38, 40-46)
+# ---------------------------------------------------------------- disk 
 fio_run() { # name outfile args...
   local name=$1 out=$2; shift 2
   fio --name="$name" "$@" --output-format=json --output="$out" > /dev/null 2> "$out.err"
@@ -351,55 +478,55 @@ stage_disk() {
     [ "$free" -ge 15 ] || { bad disk "free space" "only ${free} GB free in $DATA_DIR"; return; }
     tgt=(--filename="$DATA_DIR/fio.dat"); sz=(--size="$FIO_SIZE")
   fi
-  # row 33: fill, then 4K random write to steady state
-  fio_run pre "$OUT/fio-pre.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=write --bs=1M --iodepth=16 && rec info "fio fill write 1M" "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-pre.json")" MB/s
+  # fill, then 4K random write to steady state
+  fio_run pre "$OUT/fio-pre.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=write --bs=1M --iodepth=16 && rec info.fio.fill-write-1m "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-pre.json")"
   fio_run rw "$OUT/fio-33-randwrite4k.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=randwrite --bs=4k --iodepth=32 --numjobs=4 \
     --time_based --runtime="$(T 600 8)" --ramp_time="$ramp" --steadystate=iops_slope:1% --steadystate_duration="$(T 180 3)" --group_reporting && {
-    rec 33 "fio randwrite 4k qd32x4" "$(J '.jobs[0].write.iops|round' "$OUT/fio-33-randwrite4k.json")" IOPS
-    rec 33 "steadystate attained (1=yes)" "$(J '.jobs[0].steadystate.attained // 0' "$OUT/fio-33-randwrite4k.json")" flag; }
+    rec disk.fio.randwrite-4k.qd32x4 "$(J '.jobs[0].write.iops|round' "$OUT/fio-33-randwrite4k.json")"
+    rec disk.fio.randwrite-4k.steadystate "$(J '.jobs[0].steadystate.attained // 0' "$OUT/fio-33-randwrite4k.json")"; }
   fio_run lat "$OUT/fio-34-lat.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=randread --bs=4k --iodepth=1 --numjobs=1 \
     --time_based --runtime="$run" --ramp_time="$ramp" --percentile_list=95:99:99.9 && {
-    rec 34 "fio randread 4k qd1 p99" "$(J '.jobs[0].read.clat_ns.percentile["99.000000"]/1000' "$OUT/fio-34-lat.json")" us
-    rec 34 "fio randread 4k qd1 p99.9" "$(J '.jobs[0].read.clat_ns.percentile["99.900000"]/1000' "$OUT/fio-34-lat.json")" us; }
+    rec disk.fio.randread-4k.qd1.p99 "$(J '.jobs[0].read.clat_ns.percentile["99.000000"]/1000' "$OUT/fio-34-lat.json")"
+    rec disk.fio.randread-4k.qd1.p999 "$(J '.jobs[0].read.clat_ns.percentile["99.900000"]/1000' "$OUT/fio-34-lat.json")"; }
   fio_run rr "$OUT/fio-35-rr.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=randread --bs=4k --iodepth=32 --numjobs=4 \
-    --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting && rec 35 "fio randread 4k qd32x4" "$(J '.jobs[0].read.iops|round' "$OUT/fio-35-rr.json")" IOPS
+    --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting && rec disk.fio.randread-4k.qd32x4 "$(J '.jobs[0].read.iops|round' "$OUT/fio-35-rr.json")"
   fio_run mix "$OUT/fio-36-mix.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=randrw --rwmixread=70 --bs=4k --iodepth=32 --numjobs=4 \
     --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting && {
-    rec 36 "fio mixed 70/30 read" "$(J '.jobs[0].read.iops|round' "$OUT/fio-36-mix.json")" IOPS
-    rec 36 "fio mixed 70/30 write" "$(J '.jobs[0].write.iops|round' "$OUT/fio-36-mix.json")" IOPS; }
+    rec disk.fio.mixed-70-30-4k.read "$(J '.jobs[0].read.iops|round' "$OUT/fio-36-mix.json")"
+    rec disk.fio.mixed-70-30-4k.write "$(J '.jobs[0].write.iops|round' "$OUT/fio-36-mix.json")"; }
   fio_run sw "$OUT/fio-37-sw.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=write --bs=1M --iodepth=16 --time_based --runtime="$(T 180 5)" --ramp_time="$(T 30 1)" \
-    && rec 37 "fio seq write 1M" "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-37-sw.json")" MB/s
+    && rec disk.fio.seq-write-1m "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-37-sw.json")"
   fio_run sr "$OUT/fio-37-sr.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=read --bs=1M --iodepth=16 --time_based --runtime="$(T 180 5)" --ramp_time="$(T 30 1)" \
-    && rec 37 "fio seq read 1M" "$(J '.jobs[0].read.bw_bytes/1e6|round' "$OUT/fio-37-sr.json")" MB/s
+    && rec disk.fio.seq-read-1m "$(J '.jobs[0].read.bw_bytes/1e6|round' "$OUT/fio-37-sr.json")"
   local qd
   for qd in 1 4 16 32 64 128; do
     fio_run "qd$qd" "$OUT/fio-38-qd$qd.json" "${tgt[@]}" "${sz[@]}" "${common[@]}" --rw=randread --bs=4k --iodepth="$qd" --numjobs=1 \
-      --time_based --runtime="$(T 120 4)" --ramp_time="$(T 30 1)" && rec 38 "fio randread 4k qd$qd" "$(J '.jobs[0].read.iops|round' "$OUT/fio-38-qd$qd.json")" IOPS
+      --time_based --runtime="$(T 120 4)" --ramp_time="$(T 30 1)" && rec "disk.fio.randread-4k.sweep-qd$qd" "$(J '.jobs[0].read.iops|round' "$OUT/fio-38-qd$qd.json")"
   done
   [ -z "$RAW_DEV" ] && rm -f "$DATA_DIR/fio.dat"
 
-  # rows 40-43: DB-style 8k jobs on files in DB_DIR
+  # DB-style 8k jobs on files in DB_DIR
   mkdir -p "$DB_DIR" "$WAL_DIR"
   local fsz; fsz=$(T 2g 64m)
   fio_run randwrite8k "$OUT/fio-40.json" --directory="$DB_DIR" --size="$fsz" "${common[@]}" --rw=randwrite --bs=8k --iodepth=32 --numjobs=4 --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting \
-    && rec 40 "fio randwrite 8k" "$(J '.jobs[0].write.iops|round' "$OUT/fio-40.json")" IOPS
+    && rec disk.fio.db-randwrite-8k "$(J '.jobs[0].write.iops|round' "$OUT/fio-40.json")"
   fio_run randrw70 "$OUT/fio-41.json" --directory="$DB_DIR" --size="$fsz" "${common[@]}" --rw=randrw --rwmixread=70 --bs=8k --iodepth=32 --numjobs=4 --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting && {
-    rec 41 "fio randrw 70/30 8k read" "$(J '.jobs[0].read.iops|round' "$OUT/fio-41.json")" IOPS
-    rec 41 "fio randrw 70/30 8k write" "$(J '.jobs[0].write.iops|round' "$OUT/fio-41.json")" IOPS; }
+    rec disk.fio.db-randrw-8k.read "$(J '.jobs[0].read.iops|round' "$OUT/fio-41.json")"
+    rec disk.fio.db-randrw-8k.write "$(J '.jobs[0].write.iops|round' "$OUT/fio-41.json")"; }
   fio_run seqwrite1m "$OUT/fio-42.json" --directory="$DB_DIR" --size="$(T 8g 128m)" "${common[@]}" --rw=write --bs=1M --iodepth=16 --numjobs=1 --time_based --runtime="$(T 180 5)" --ramp_time="$(T 30 1)" \
-    && rec 42 "fio seqwrite 1M" "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-42.json")" MB/s
+    && rec disk.fio.db-seqwrite-1m "$(J '.jobs[0].write.bw_bytes/1e6|round' "$OUT/fio-42.json")"
   fio_run randread8k "$OUT/fio-43.json" --directory="$DB_DIR" --size="$fsz" "${common[@]}" --rw=randread --bs=8k --iodepth=32 --numjobs=4 --time_based --runtime="$run" --ramp_time="$ramp" --group_reporting \
-    && rec 43 "fio randread 8k" "$(J '.jobs[0].read.iops|round' "$OUT/fio-43.json")" IOPS
+    && rec disk.fio.db-randread-8k "$(J '.jobs[0].read.iops|round' "$OUT/fio-43.json")"
   rm -f "$DB_DIR"/randwrite8k.* "$DB_DIR"/randrw70.* "$DB_DIR"/seqwrite1m.* "$DB_DIR"/randread8k.*
-  # rows 44-46: WAL commit latency (8k write + fdatasync, QD1)
+  # WAL commit latency (8k write + fdatasync, QD1)
   fio_run wal "$OUT/fio-44-wal.json" --directory="$WAL_DIR" --size="$(T 1g 64m)" --rw=write --bs=8k --ioengine=sync --fdatasync=1 --time_based --runtime="$run" && {
-    rec 44 "wal fdatasync avg" "$(J '.jobs[0].sync.lat_ns.mean/1e6' "$OUT/fio-44-wal.json")" ms
-    rec 45 "wal fdatasync p99" "$(J '.jobs[0].sync.lat_ns.percentile["99.000000"]/1e6' "$OUT/fio-44-wal.json")" ms
-    rec 46 "wal commit iops qd1" "$(J '.jobs[0].write.iops|round' "$OUT/fio-44-wal.json")" IOPS; }
+    rec disk.wal.fdatasync.avg "$(J '.jobs[0].sync.lat_ns.mean/1e6' "$OUT/fio-44-wal.json")"
+    rec disk.wal.fdatasync.p99 "$(J '.jobs[0].sync.lat_ns.percentile["99.000000"]/1e6' "$OUT/fio-44-wal.json")"
+    rec disk.wal.commit-iops.qd1 "$(J '.jobs[0].write.iops|round' "$OUT/fio-44-wal.json")"; }
   rm -f "$WAL_DIR"/wal.*
 }
 
-# ---------------------------------------------------------------- pg (rows 47,48,49)
+# ---------------------------------------------------------------- pg 
 stage_pg() {
   log "== pg"
   need pgbench && need psql || { skip pg pgbench "not installed"; return; }
@@ -416,21 +543,21 @@ stage_pg() {
   pgbench -i -s "$scale" -I dtGvp > "$OUT/pgbench-init.log" 2>&1 || { bad pg "pgbench init" "see pgbench-init.log"; return; }
   ok pg "pgbench init"
   pgbench -c "$c" -j "$j" -T "$(T 60 5)" > "$OUT/pgbench-warmup.log" 2>&1
-  pgbench -c "$c" -j "$j" -T "$(T 600 10)" -P 10 > "$OUT/pgbench-47.log" 2>&1
-  local tps; tps=$(awk '/^tps =/{print $3}' "$OUT/pgbench-47.log")
+  pgbench -c "$c" -j "$j" -T "$(T 600 10)" -P 10 > "$OUT/pgbench-tpcb.log" 2>&1
+  local tps; tps=$(awk '/^tps =/{print $3}' "$OUT/pgbench-tpcb.log")
   if [ -n "$tps" ]; then
-    rec 47 "pgbench tpcb-like tps (-c $c)" "$tps" TPS
-    awk '/^progress:/{v[++n]=$4} END{ if(n>1){ for(i=2;i<=n;i++){s+=v[i];q+=v[i]*v[i]} k=n-1; m=s/k; sd=sqrt(q/k-m*m); printf "%.2f\n", 100*(1-sd/m)} }' "$OUT/pgbench-47.log" > "$OUT/.stab"
-    [ -s "$OUT/.stab" ] && rec 48 "tps stability 100*(1-cv)" "$(cat "$OUT/.stab")" % ; rm -f "$OUT/.stab"
-    ok pg "pgbench 47/48"
-  else bad pg "pgbench run" "see pgbench-47.log"; fi
-  pgbench -c 1 -j 1 -T "$(T 300 10)" -P 10 -r > "$OUT/pgbench-49.log" 2>&1
-  local lat; lat=$(awk '/^latency average =/{print $4}' "$OUT/pgbench-49.log")
-  [ -n "$lat" ] && rec 49 "pgbench single-session latency" "$lat" ms && ok pg "pgbench 49" || bad pg "pgbench 49"
+    rec pg.pgbench.tpcb.tps "$tps" "$c"
+    awk '/^progress:/{v[++n]=$4} END{ if(n>1){ for(i=2;i<=n;i++){s+=v[i];q+=v[i]*v[i]} k=n-1; m=s/k; sd=sqrt(q/k-m*m); printf "%.2f\n", 100*(1-sd/m)} }' "$OUT/pgbench-tpcb.log" > "$OUT/.stab"
+    [ -s "$OUT/.stab" ] && rec pg.pgbench.tpcb.stability "$(cat "$OUT/.stab")"; rm -f "$OUT/.stab"
+    ok pg "pgbench tpcb"
+  else bad pg "pgbench run" "see pgbench-tpcb.log"; fi
+  pgbench -c 1 -j 1 -T "$(T 300 10)" -P 10 -r > "$OUT/pgbench-single.log" 2>&1
+  local lat; lat=$(awk '/^latency average =/{print $4}' "$OUT/pgbench-single.log")
+  [ -n "$lat" ] && rec pg.pgbench.latency.single "$lat" && ok pg "pgbench single-session" || bad pg "pgbench single-session"
   log "pgbench data remains in db $PGDATABASE (~$(awk -v s="$scale" 'BEGIN{printf "%.0f", s*0.0157}') GB). Drop with: dropdb $PGDATABASE && createdb $PGDATABASE"
 }
 
-# ---------------------------------------------------------------- net (rows 51,52,53)
+# ---------------------------------------------------------------- net 
 stage_net() {
   log "== net"
   [ -n "$PEER" ] || { skip net all "PEER not set (peer must run: iperf3 -s -D ; sockperf server -i 0.0.0.0 &)"; return; }
@@ -440,25 +567,24 @@ stage_net() {
     local a b
     a=$(jq -r '.end.sum_received.bits_per_second/1e9' "$OUT/iperf-tcp.json" 2>/dev/null); b=$(jq -r '.end.sum_received_bidir_reverse.bits_per_second/1e9' "$OUT/iperf-tcp.json" 2>/dev/null)
     if [ -n "$a" ] && [ "$a" != null ]; then
-      rec 51 "iperf3 tcp tx->peer" "$a" Gbps; rec 51 "iperf3 tcp peer->rx" "${b:-0}" Gbps
-      rec 51 "iperf3 tcp bidir total" "$(awk -v x="$a" -v y="${b:-0}" 'BEGIN{print x+y}')" Gbps; ok net iperf-tcp
+      rec net.iperf3.tcp.tx "$a"; rec net.iperf3.tcp.rx "${b:-0}"
+      rec net.iperf3.tcp.bidir "$(awk -v x="$a" -v y="${b:-0}" 'BEGIN{print x+y}')"; ok net iperf-tcp
     else bad net iperf-tcp "see iperf-tcp.json"; fi
     iperf3 -c "$PEER" -u -b 0 -l 64 -P 8 -t "$d" -J > "$OUT/iperf-udp.json" 2>/dev/null
     local p; p=$(jq -r '.end.sum.packets' "$OUT/iperf-udp.json" 2>/dev/null)
-    if [ -n "$p" ] && [ "$p" != null ]; then rec 53 "iperf3 udp 64B packets sent" "$(awk -v p="$p" -v d="$d" 'BEGIN{printf "%.3f", p/d/1e6}')" Mpps
-      rec 53 "iperf3 udp lost packets %" "$(jq -r '.end.sum.lost_percent' "$OUT/iperf-udp.json")" % ; ok net iperf-udp
+    if [ -n "$p" ] && [ "$p" != null ]; then rec net.iperf3.udp.pps "$(awk -v p="$p" -v d="$d" 'BEGIN{printf "%.3f", p/d/1e6}')"
+      rec net.iperf3.udp.loss "$(jq -r '.end.sum.lost_percent' "$OUT/iperf-udp.json")"; ok net iperf-udp
     else bad net iperf-udp "see iperf-udp.json"; fi
   else skip net iperf3 "iperf3 missing or $PEER:5201 unreachable"; fi
   if need sockperf; then
     timeout $((d + 30)) sockperf ping-pong -i "$PEER" -t "$d" > "$OUT/sockperf.txt" 2>&1
     local avg p99
     avg=$(grep -oE 'avg-latency=[0-9.]+' "$OUT/sockperf.txt" | head -1 | cut -d= -f2); p99=$(awk '/percentile 99.000/{print $NF}' "$OUT/sockperf.txt")
-    if [ -n "$avg" ]; then rec 52 "sockperf ping-pong avg (one-way)" "$avg" us; [ -n "$p99" ] && rec 52 "sockperf ping-pong p99" "$p99" us; ok net sockperf
+    if [ -n "$avg" ]; then rec net.sockperf.pingpong.avg "$avg"; [ -n "$p99" ] && rec net.sockperf.pingpong.p99 "$p99"; ok net sockperf
     else bad net sockperf "see sockperf.txt (is 'sockperf server' running on $PEER?)"; fi
   else skip net sockperf "not installed"; fi
 }
 
-# ---------------------------------------------------------------- web (row 55)
 stage_web() {
   log "== web"
   [ -x "$CB/cpubench" ] || { skip web all "$CB/cpubench missing, run setup-cpubench.sh"; return; }
@@ -478,13 +604,13 @@ stage_web() {
   for f in "$OUT/web.json" "$OUT/$LABEL-web-mix.json"; do
     [ -s "$f" ] || continue
     k=$(jq -r '.web.knee_rps // empty' "$f")
-    [ -n "$k" ] && { rec 55 "cpubench web mix max RPS @ SLO (loopback)" "$k" RPS; ok web "$(basename "$f")"; }
+    [ -n "$k" ] && { rec web.cpubench.mix.max-rps "$k"; ok web "$(basename "$f")"; }
   done
   [ -n "${k:-}" ] || bad web "max RPS" "see web.log"
   log "web: check that the SERVER CPUs saturated before the load generator (cpustat log, report warnings)"
 }
 
-# ---------------------------------------------------------------- burn-in (row 65) - only when asked
+# ---------------------------------------------------------------- burn-in  - only when asked
 stage_burnin() {
   log "== burnin"
   need fio && need stressapptest || { skip burnin all "fio or stressapptest missing"; return; }
@@ -512,7 +638,7 @@ stage_burnin() {
   dmesg -T 2>/dev/null | grep -iE 'error|mce|i/o' > "$OUT/dmesg-errors.txt"
   local derr; derr=$(diff <(grep -iE 'error|mce|i/o' "$OUT/dmesg-before.txt") "$OUT/dmesg-errors.txt" | grep -c '^>')
   errs=$((errs + derr))
-  rec 65 "burn-in errors (${secs}s)" "$errs" count; ok burnin "rounds=$rounds errors=$errs"
+  rec burnin.errors "$errs" "$secs"; ok burnin "rounds=$rounds errors=$errs"
   [ -z "$RAW_DEV" ] && rm -f "$DATA_DIR/burn.dat"
 }
 
@@ -522,16 +648,17 @@ if need mpstat; then ( LC_ALL=C S_TIME_FORMAT=ISO mpstat 5 > "$LOGSTEAL" 2>&1 & 
 trap '[ -f "$OUT/.mpstat.pid" ] && kill "$(cat "$OUT/.mpstat.pid")" 2>/dev/null; rm -f "$OUT/.mpstat.pid"' EXIT
 
 log "label=$LABEL quick=$QUICK stages=[$STAGES] out=$OUT"
+write_meta
 for s in info cpu mem disk pg net web burnin; do
   want "$s" || continue
   "stage_$s"
 done
 
-# steal summary (rows: CPU steal during the whole run)
+# steal summary (CPU steal during the whole run)
 if [ -s "$LOGSTEAL" ]; then
   awk '/%steal/{for(i=1;i<=NF;i++) if($i=="%steal") c=i; next} c && $2=="all"{s+=$c; n++; if($c>m) m=$c} END{if(n) printf "%.2f\t%.2f\n", s/n, m}' "$LOGSTEAL" > "$OUT/.steal"
   if [ -s "$OUT/.steal" ]; then
-    rec info "cpu steal avg" "$(cut -f1 "$OUT/.steal")" %; rec info "cpu steal max" "$(cut -f2 "$OUT/.steal")" %
+    rec info.cpu.steal.avg "$(cut -f1 "$OUT/.steal")"; rec info.cpu.steal.peak "$(cut -f2 "$OUT/.steal")"
   fi; rm -f "$OUT/.steal"
 fi
 
@@ -540,23 +667,22 @@ if need python3; then
   python3 -I - "$RES" "$OUT/summary.tsv" <<'PY'
 import csv, statistics, sys, collections
 res, out = sys.argv[1], sys.argv[2]
-d = collections.OrderedDict()
+d = collections.OrderedDict()   # in the order the tests ran
 for r in list(csv.reader(open(res), delimiter='\t'))[1:]:
     if len(r) < 5: continue
-    row, metric, val, unit, _ = r
+    mid, metric, val, unit, _ = r
     try: v = float(val)
     except ValueError: continue
-    d.setdefault((row, metric, unit), []).append(v)
-def key(k):
-    try: return (0, int(k[0]), k[1])
-    except ValueError: return (1, 0, k[1])
+    d.setdefault((mid, metric, unit), []).append(v)
 with open(out, 'w') as f:
-    f.write('row\tmetric\tunit\tn\tmedian\tmin\tmax\tcv_pct\n')
-    for (row, metric, unit), v in sorted(d.items(), key=lambda kv: key(kv[0])):
+    f.write('id\tmetric\tunit\tn\tmedian\tmin\tmax\tcv_pct\n')
+    for (mid, metric, unit), v in d.items():
         m = statistics.median(v); cv = (statistics.pstdev(v) / statistics.mean(v) * 100) if len(v) > 1 and statistics.mean(v) else 0
-        f.write(f'{row}\t{metric}\t{unit}\t{len(v)}\t{m:.4g}\t{min(v):.4g}\t{max(v):.4g}\t{cv:.1f}\n')
+        f.write(f'{mid}\t{metric}\t{unit}\t{len(v)}\t{m:.4g}\t{min(v):.4g}\t{max(v):.4g}\t{cv:.1f}\n')
 PY
 fi
+
+write_meta "$(utc_now)"
 
 # tables: stdout plus report.md and report.html in the result folder (report.py sits next to this script)
 REPORT=$(dirname "${BASH_SOURCE[0]}")/report.py
@@ -565,6 +691,6 @@ if [ -f "$REPORT" ] && need python3; then
 fi
 
 log "done. results: $OUT"
-log "  summary.tsv (median per metric), results.tsv (every value), status.tsv (OK/FAIL/SKIP per step), info.txt, raw logs"
+log "  summary.tsv (median per metric), results.tsv (every value), status.tsv (OK/FAIL/SKIP per step), meta.json, info.txt, raw logs"
 grep -E 'FAIL' "$STATUS" | sed 's/^/  /'
 true

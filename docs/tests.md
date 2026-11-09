@@ -1,0 +1,104 @@
+# Tests and metric IDs
+
+Every value in `results.tsv` has a stable ID. The ID, not the text of the metric, is what identifies a test: the text can change (it carries the vCPU count or the test size), the ID does not.
+
+## Naming scheme
+
+```text
+<stage>.<tool>.<test>[.<variant>]
+```
+
+- lowercase letters, digits and `-`, parts separated by dots, the stage first (`cpu`, `mem`, `disk`, `pg`, `net`, `web`, `burnin`, and `info` for context values that are not scored)
+- a last part of `1t` means one thread, `max` means all vCPUs of the machine (so an 8 vCPU and a 16 vCPU run still pair up)
+- `mem.stream.*.max` and `mem.lmbench.lat-mem-rd.1t` follow the same rule: STREAM uses every vCPU, `lat_mem_rd` one process
+- `.max` always means "all vCPUs", so IDs of other kinds of maximum never end in it (CPU steal uses `.peak`)
+- IDs are never reused for something else. A changed test gets a new ID.
+
+## Columns
+
+- **Direction**: `higher` or `lower` is better. `none` is a context value that `report.py compare` shows but never calls a win. The direction is derived from the unit by `report.py` (`ns`, `us`, `ms` and `count` are lower, as is packet loss; the rest are higher), and the tests check that this table agrees.
+- **Unit**: `varies` means the unit comes from cpubench for each benchmark (for example `ops/s` or `MB/s`).
+- A metric is only recorded when its tool succeeded, so a result folder can hold a subset of these IDs. `status.tsv` says which steps failed or were skipped.
+
+The table below is the same data as `bash run-benchmark.sh --metrics`, which is the source of truth. `tests/test_ids.py` fails when this file and the script disagree.
+
+## Metrics
+
+| ID | What it measures | Tool | Unit | Direction | Stage |
+|---|---|---|---|---|---|
+| `cpu.sysbench.prime.1t` | Prime-number counting (--cpu-max-prime=20000), 1 thread | sysbench | events/s | higher | cpu |
+| `cpu.sysbench.prime.max` | Prime-number counting (--cpu-max-prime=20000), all vCPUs | sysbench | events/s | higher | cpu |
+| `cpu.7z.rating.max` | 7-Zip built-in benchmark total rating, all vCPUs | 7-Zip | MIPS | higher | cpu |
+| `cpu.openssl.aes-256-gcm.1t` | AES-256-GCM throughput (openssl speed -evp), 1 thread | OpenSSL | MB/s | higher | cpu |
+| `cpu.openssl.aes-256-gcm.max` | AES-256-GCM throughput (openssl speed -evp), all vCPUs | OpenSSL | MB/s | higher | cpu |
+| `cpu.cpubench.crypto.aes-gcm.1t` | AES-GCM (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.aes-gcm.max` | AES-GCM (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.ecdsa-p256.1t` | ECDSA P-256 signing (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.ecdsa-p256.max` | ECDSA P-256 signing (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.rsa2048-sign.1t` | RSA-2048 signing (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.rsa2048-sign.max` | RSA-2048 signing (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.sha256.1t` | SHA-256 (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.crypto.sha256.max` | SHA-256 (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.fft.1t` | FFT (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.fft.max` | FFT (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.matmul.1t` | Matrix multiplication (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.matmul.max` | Matrix multiplication (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.nbody.1t` | N-body simulation (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.float.nbody.max` | N-body simulation (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.compress.1t` | Compression (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.compress.max` | Compression (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.decompress.1t` | Decompression (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.decompress.max` | Decompression (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.hashmap.1t` | Hash map operations (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.hashmap.max` | Hash map operations (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.json.1t` | JSON encode/decode (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.json.max` | JSON encode/decode (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.regex.1t` | Regular expressions (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.regex.max` | Regular expressions (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.sort.1t` | Sorting (median of cpubench iterations), 1 thread | cpubench | varies | higher | cpu |
+| `cpu.cpubench.int.sort.max` | Sorting (median of cpubench iterations), all vCPUs | cpubench | varies | higher | cpu |
+| `mem.stream.triad.max` | Memory bandwidth, triad kernel, all vCPUs | STREAM | MB/s | higher | mem |
+| `mem.stream.copy.max` | Memory bandwidth, copy kernel, all vCPUs | STREAM | MB/s | higher | mem |
+| `mem.lmbench.lat-mem-rd.1t` | Memory load latency at the largest working set (-t, 1 process) | lmbench | ns | lower | mem |
+| `disk.fio.randwrite-4k.qd32x4` | 4 KiB random write, queue depth 32 x 4 jobs, after fill to steady state | fio | IOPS | higher | disk |
+| `disk.fio.randwrite-4k.steadystate` | 1 if the random-write run reached fio steady state (context, not scored) | fio | flag | none | disk |
+| `disk.fio.randread-4k.qd1.p99` | 4 KiB random read latency, queue depth 1, 99th percentile | fio | us | lower | disk |
+| `disk.fio.randread-4k.qd1.p999` | 4 KiB random read latency, queue depth 1, 99.9th percentile | fio | us | lower | disk |
+| `disk.fio.randread-4k.qd32x4` | 4 KiB random read, queue depth 32 x 4 jobs | fio | IOPS | higher | disk |
+| `disk.fio.mixed-70-30-4k.read` | 4 KiB random 70% read / 30% write mix, read side | fio | IOPS | higher | disk |
+| `disk.fio.mixed-70-30-4k.write` | 4 KiB random 70% read / 30% write mix, write side | fio | IOPS | higher | disk |
+| `disk.fio.seq-write-1m` | 1 MiB sequential write, queue depth 16 | fio | MB/s | higher | disk |
+| `disk.fio.seq-read-1m` | 1 MiB sequential read, queue depth 16 | fio | MB/s | higher | disk |
+| `disk.fio.randread-4k.sweep-qd1` | 4 KiB random read at queue depth 1 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.randread-4k.sweep-qd4` | 4 KiB random read at queue depth 4 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.randread-4k.sweep-qd16` | 4 KiB random read at queue depth 16 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.randread-4k.sweep-qd32` | 4 KiB random read at queue depth 32 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.randread-4k.sweep-qd64` | 4 KiB random read at queue depth 64 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.randread-4k.sweep-qd128` | 4 KiB random read at queue depth 128 (queue-depth sweep) | fio | IOPS | higher | disk |
+| `disk.fio.db-randwrite-8k` | 8 KiB random write on files in DB_DIR (database data pattern) | fio | IOPS | higher | disk |
+| `disk.fio.db-randrw-8k.read` | 8 KiB random 70/30 mix on DB_DIR, read side | fio | IOPS | higher | disk |
+| `disk.fio.db-randrw-8k.write` | 8 KiB random 70/30 mix on DB_DIR, write side | fio | IOPS | higher | disk |
+| `disk.fio.db-seqwrite-1m` | 1 MiB sequential write on files in DB_DIR | fio | MB/s | higher | disk |
+| `disk.fio.db-randread-8k` | 8 KiB random read on files in DB_DIR | fio | IOPS | higher | disk |
+| `disk.wal.fdatasync.avg` | WAL-style 8 KiB write + fdatasync, queue depth 1, mean latency | fio | ms | lower | disk |
+| `disk.wal.fdatasync.p99` | WAL-style 8 KiB write + fdatasync, 99th percentile latency | fio | ms | lower | disk |
+| `disk.wal.commit-iops.qd1` | WAL-style commits per second at queue depth 1 | fio | IOPS | higher | disk |
+| `pg.pgbench.tpcb.tps` | TPC-B-like transactions per second with 2 x vCPU clients | pgbench | TPS | higher | pg |
+| `pg.pgbench.tpcb.stability` | Steadiness of TPS over the run, 100 x (1 - coefficient of variation) | pgbench | % | higher | pg |
+| `pg.pgbench.latency.single` | Average transaction latency with one client | pgbench | ms | lower | pg |
+| `net.iperf3.tcp.tx` | TCP throughput to the peer, 8 streams | iperf3 | Gbps | higher | net |
+| `net.iperf3.tcp.rx` | TCP throughput from the peer, 8 streams | iperf3 | Gbps | higher | net |
+| `net.iperf3.tcp.bidir` | TCP throughput, both directions added | iperf3 | Gbps | higher | net |
+| `net.sockperf.pingpong.avg` | Average one-way latency (ping-pong) | sockperf | us | lower | net |
+| `net.sockperf.pingpong.p99` | 99th percentile latency (ping-pong) | sockperf | us | lower | net |
+| `net.iperf3.udp.pps` | UDP packets sent per second, 64-byte payload | iperf3 | Mpps | higher | net |
+| `net.iperf3.udp.loss` | UDP packet loss at the maximum send rate | iperf3 | % | lower | net |
+| `web.cpubench.mix.max-rps` | Highest requests per second within the latency target (loopback) | cpubench | RPS | higher | web |
+| `burnin.errors` | Errors found by the burn-in (memory, disk verify, kernel log) | stressapptest, fio | count | lower | burnin |
+| `info.cpu.steal.avg` | Average CPU steal during the whole run (context, not scored) | mpstat | % | none | info |
+| `info.cpu.steal.peak` | Highest CPU steal sample during the run (context, not scored) | mpstat | % | none | info |
+| `info.fio.fill-write-1m` | Speed of the 1 MiB sequential fill before the disk tests (context, not scored) | fio | MB/s | none | info |
+
+## Old result folders
+
+Result folders written before the IDs existed have a `results.tsv` with the header `row`, `metric`, `value`, `unit`, `round`, where `row` is a number from the original spreadsheet test plan. `report.py` still reads them and maps each row to the ID above through the `LEGACY` table in `report.py`. Rows it does not know are shown under `<stage>.row<N>.<text>`.

@@ -1,0 +1,28 @@
+id	metric	value	unit	round
+cpu.sysbench.prime.1t	sysbench cpu 1t	998.59	events/s	1
+cpu.sysbench.prime.max	sysbench cpu 8t	7179.89	events/s	1
+cpu.openssl.aes-256-gcm.1t	openssl aes-256-gcm 1t	5006.04	MB/s	1
+cpu.openssl.aes-256-gcm.max	openssl aes-256-gcm 8t	35876.86	MB/s	1
+cpu.cpubench.crypto.rsa2048-sign.1t	cpubench crypto/rsa2048-sign 1t	800.23	ops/s	1
+cpu.cpubench.crypto.rsa2048-sign.max	cpubench crypto/rsa2048-sign 8t	4608.0	ops/s	1
+cpu.sysbench.prime.1t	sysbench cpu 1t	996.46	events/s	2
+cpu.sysbench.prime.max	sysbench cpu 8t	7200.43	events/s	2
+cpu.openssl.aes-256-gcm.1t	openssl aes-256-gcm 1t	4981.5	MB/s	2
+cpu.openssl.aes-256-gcm.max	openssl aes-256-gcm 8t	35980.89	MB/s	2
+cpu.cpubench.crypto.rsa2048-sign.1t	cpubench crypto/rsa2048-sign 1t	797.25	ops/s	2
+cpu.cpubench.crypto.rsa2048-sign.max	cpubench crypto/rsa2048-sign 8t	5760.0	ops/s	2
+cpu.sysbench.prime.1t	sysbench cpu 1t	999.4	events/s	3
+cpu.sysbench.prime.max	sysbench cpu 8t	7218.83	events/s	3
+cpu.openssl.aes-256-gcm.1t	openssl aes-256-gcm 1t	4984.95	MB/s	3
+cpu.openssl.aes-256-gcm.max	openssl aes-256-gcm 8t	35920.29	MB/s	3
+cpu.cpubench.crypto.rsa2048-sign.1t	cpubench crypto/rsa2048-sign 1t	800.82	ops/s	3
+cpu.cpubench.crypto.rsa2048-sign.max	cpubench crypto/rsa2048-sign 8t	6912.0	ops/s	3
+mem.stream.triad.max	stream triad	90000.0	MB/s	1
+mem.lmbench.lat-mem-rd.1t	lat_mem_rd -t 2048MB	150.0	ns	1
+disk.fio.randread-4k.qd32x4	fio randread 4k qd32x4	120000.0	IOPS	1
+disk.fio.randread-4k.qd1.p99	fio randread 4k qd1 p99	400.0	us	1
+disk.wal.fdatasync.avg	wal fdatasync avg	1.0	ms	1
+disk.fio.randwrite-4k.steadystate	steadystate attained (1=yes)	1	flag	1
+web.cpubench.mix.max-rps	cpubench web mix max RPS @ SLO (loopback)	18000.0	RPS	1
+info.cpu.steal.avg	cpu steal avg	0.05	%	1
+info.cpu.steal.peak	cpu steal max	0.15000000000000002	%	1
