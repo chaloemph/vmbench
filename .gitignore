@@ -1,0 +1,29 @@
+# benchmark output: it holds host names, IP addresses and process lists (info.txt), never commit it
+bench-results/
+results/
+compare-*/
+report.md
+report.html
+*.tsv
+*.json
+*.log
+
+# test data created by the disk stage
+bench-data/
+bench-cache/
+*.dat
+
+# spreadsheets and local notes
+*.xlsx
+*.xls
+*.local
+.env
+
+# python and editors
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
+.idea/
+.DS_Store
