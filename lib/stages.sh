@@ -10,6 +10,8 @@
 #   stage_<name>_note      print what the stage needs, shown in --help (may print nothing)
 #   stage_<name>_check     add a line to PROBLEMS for everything that stops the stage from running (see lib/preflight.sh)
 #   stage_<name>_run       run the stage; record results with rec and steps with ok/bad/skip
+#   stage_<name>_rounds    optional: print how many times the stage repeats its measurements in this run. --list scales
+#                          the duration with it and meta.json records it (a stage without it is a single pass)
 #
 # After load_stages:
 #   ALL_STAGES       space separated names of the selectable stages, in order (info is not in it)
@@ -34,6 +36,9 @@ load_stages() {
   done < <(printf '%s' "$list" | sort -n -s -k1,1)
   ALL_STAGES=${ALL_STAGES# } DEFAULT_STAGES=${DEFAULT_STAGES# }
 }
+
+# rounds_time MIN_PER_ROUND ROUNDS: a duration text such as "9 min", for stage_<name>_time of a stage that repeats
+rounds_time() { echo "$(( $1 * $2 )) min"; }
 
 # want NAME: true when the stage is selected (STAGES holds the selected names, set by `vmbench run`)
 want() { case "$STAGES" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }

@@ -74,7 +74,7 @@ out=$(STREAM_CACHE_DIR=$TMP/cache STREAM_URL="file://$OTHER" bash lib/stream.sh 
 stage() { # stage ENV...  runs stage_mem_run in a subshell and prints what it recorded
   (
     env "$@" bash -c '
-      VMBENCH_HOME=$1; OUT=$2; STATUS=$OUT/status.tsv; QUICK=1; NPROC=1; MEM_AVAIL_KB=1000000
+      VMBENCH_HOME=$1; OUT=$2; STATUS=$OUT/status.tsv; QUICK=1; NPROC=1; MEM_AVAIL_KB=1000000; MEM_ROUNDS=2
       . "$VMBENCH_HOME/lib/common.sh"; . "$VMBENCH_HOME/lib/stream.sh"; . "$VMBENCH_HOME/stages/mem.sh"
       rec() { echo "REC $1 $2"; }
       [ -n "${SYN_SUM:-}" ] && STREAM_SHA256=$SYN_SUM
@@ -87,15 +87,15 @@ stage() { # stage ENV...  runs stage_mem_run in a subshell and prints what it re
 if command -v gcc >/dev/null 2>&1; then
   export OUT=$TMP/out1; mkdir -p "$OUT"
   res=$(stage STREAM_C="$SYN" SYN_SUM="$SYN_SUM" HOME="$HOME")
-  if grep -q '^mem	stream	OK' <<<"$res" && grep -q '^stream: local file (STREAM_C), sha256 verified' <<<"$res" && ! grep -qx 'stream.c' <<<"$res"; then check "mem stage: verified file is compiled and run, source recorded in info.txt" 0
-  else check "mem stage: verified file is compiled and run, source recorded in info.txt" 1 "$res"; fi
+  if grep -q '^mem	stream r1	OK' <<<"$res" && grep -q '^mem	stream r2	OK' <<<"$res" && grep -q '^stream: local file (STREAM_C), sha256 verified' <<<"$res" && ! grep -qx 'stream.c' <<<"$res"; then check "mem stage: verified file is compiled once and run in every round, source recorded in info.txt" 0
+  else check "mem stage: verified file is compiled once and run in every round, source recorded in info.txt" 1 "$res"; fi
   export OUT=$TMP/out2; mkdir -p "$OUT"
   res=$(stage STREAM_C="$OTHER" HOME="$HOME")
   if grep -q '^mem	stream.c	FAIL' <<<"$res" && ! grep -q '^REC' <<<"$res" && ! grep -qx 'stream-build.log' <<<"$res"; then check "mem stage: a wrong hash is a FAIL and nothing is compiled" 0
   else check "mem stage: a wrong hash is a FAIL and nothing is compiled" 1 "$res"; fi
   export OUT=$TMP/out3; mkdir -p "$OUT"
   res=$(stage STREAM_C="$SYN" STREAM_SKIP_CHECK=1 HOME="$HOME")
-  if grep -q '^mem	stream	OK' <<<"$res" && grep -q 'UNVERIFIED' <<<"$res"; then check "mem stage: STREAM_SKIP_CHECK=1 runs and records UNVERIFIED" 0
+  if grep -q '^mem	stream r1	OK' <<<"$res" && grep -q 'UNVERIFIED' <<<"$res"; then check "mem stage: STREAM_SKIP_CHECK=1 runs and records UNVERIFIED" 0
   else check "mem stage: STREAM_SKIP_CHECK=1 runs and records UNVERIFIED" 1 "$res"; fi
 else
   echo "skip mem stage tests (no gcc)"

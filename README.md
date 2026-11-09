@@ -10,12 +10,12 @@ vmbench runs a fixed set of well-known tools (sysbench, 7-Zip, OpenSSL, STREAM, 
 
 | Stage | Tests | Tools | Runs by default |
 |---|---|---|:---:|
-| `cpu` | integer, floating point, crypto, compression, 1 thread and all vCPUs, 3 rounds | sysbench, 7-Zip, OpenSSL, cpubench | yes |
-| `mem` | memory bandwidth and latency | STREAM, lmbench `lat_mem_rd` | yes |
-| `disk` | random and sequential I/O, queue-depth sweep, WAL-style `fdatasync` latency | fio | yes |
+| `cpu` | integer, floating point, crypto, compression, 1 thread and all vCPUs, 3 rounds by default | sysbench, 7-Zip, OpenSSL, cpubench | yes |
+| `mem` | memory bandwidth and latency, 3 rounds by default | STREAM, lmbench `lat_mem_rd` | yes |
+| `disk` | random and sequential I/O, queue-depth sweep, WAL-style `fdatasync` latency; 1 round by default, see [Rounds](#rounds) | fio | yes |
 | `pg` | PostgreSQL TPC-B-like throughput, stability and single-session latency | pgbench | |
 | `net` | TCP throughput, UDP packet rate, round-trip latency to a peer | iperf3, sockperf | |
-| `web` | maximum requests per second within a latency target (loopback) | cpubench | |
+| `web` | maximum requests per second within a latency target (loopback), 3 rounds by default | cpubench | |
 | `burnin` | memory and disk error check over a long period | stressapptest, fio | |
 
 `info` always runs: it records the kernel, CPU model, flags, NUMA layout, disks, tool versions and CPU steal, because a result without them cannot be interpreted later.
@@ -89,22 +89,26 @@ cd vmbench
 
 `vmbench` finds its own folder, so it works from any directory and through a symlink (for example `ln -s "$PWD/vmbench" ~/.local/bin/vmbench`). The older commands still work and do the same: `bash run-benchmark.sh ...` is `vmbench run ...`, `bash setup-cpubench.sh` is `vmbench setup cpubench`, and `bash setup-postgres-bench.sh` is `vmbench setup postgres`.
 
-Long runs belong in `tmux`, so a dropped SSH session does not stop them:
+Long runs belong in `tmux`, so a dropped SSH session does not stop them. `--detach` does that for you:
 
 ```bash
-tmux new -s bench
-LABEL=my-vm ./vmbench run --with web
+LABEL=my-vm ./vmbench run --with web --detach     # pre-flight in the foreground, then runs in tmux session vmbench-my-vm and returns
+./vmbench status                                  # running or not, current stage, elapsed time (newest result folder; or: vmbench status DIR)
+tmux attach -t vmbench-my-vm                      # watch it; leave with Ctrl-b d, the run keeps going
 ```
+
+or start `tmux` yourself (`tmux new -s bench`, then `vmbench run ...`).
 
 A full run of `cpu`, `mem` and `disk` took about 1.5 hours on 8 vCPU VMs with an 8 GB test file, most of it in `disk`.
 
 ## Options
 
 ```text
-vmbench run [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--metrics] [--help]
+vmbench run [--with LIST | --only LIST] [--peer HOST] [--hours N] [--rounds N] [--disk-rounds N] [--detach [--session NAME]] [--list] [--metrics] [--help]
+vmbench status [DIR]
 ```
 
-`bash run-benchmark.sh` takes the same options.
+`bash run-benchmark.sh` takes the same options as `vmbench run`.
 
 | Option | Meaning |
 |---|---|
@@ -112,12 +116,31 @@ vmbench run [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--me
 | `--only LIST` | run only these stages (cannot be combined with `--with`) |
 | `--peer HOST` | peer machine for `net`; it must run `iperf3 -s -D` and `sockperf server -i 0.0.0.0 &` |
 | `--hours N` | length of the burn-in (default 48) |
-| `--list` | show stages, typical duration and readiness of this machine |
+| `--rounds N` | repeats of `cpu`, `mem` and `web` (default 3), see [Rounds](#rounds) |
+| `--disk-rounds N` | repeats of the `disk` stage (default 1; each extra round is about 20 minutes) |
+| `--detach` | after the pre-flight passes, run in a new tmux session and return at once. Pre-flight errors are still printed in the foreground (exit 2, nothing started). Refused when tmux is missing or the session already exists |
+| `--session NAME` | name of that tmux session (default `vmbench-<label>`) |
+| `--list` | show stages, typical duration (it follows the rounds) and readiness of this machine |
 | `--metrics` | print the table of metric IDs and exit |
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (cpu repeats, default 3), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
+
+### Rounds
+
+Every stage that repeats writes one row per value per round into `results.tsv` (the `round` column), so `report.py` shows the median and the coefficient of variation (CV) of all of them, and `compare` does not call a difference a win when it is inside that noise.
+
+| Stage | Default | Set with | What one round is |
+|---|---|---|---|
+| `cpu` | 3 | `--rounds N`, `ROUNDS` | every cpu test (about 6 min) |
+| `mem` | 3 | `--rounds N`, `MEM_ROUNDS` | STREAM and `lat_mem_rd` once (about 1 min; `stream.c` is compiled once) |
+| `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 6 min) |
+| `disk` | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1 is the whole sequence; rounds 2 to N repeat only the 4 KiB random-read latency (p99, p99.9), random read, 70/30 mix and the WAL `fdatasync` test (about 20 min each) |
+
+`ROUNDS` is the default of `mem` and `web` as well; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage, and `--rounds N` overrides all three. `QUICK=1` runs one round unless you ask for more. A value must be a whole number of 1 or more; anything else exits with code 2 before anything runs. `meta.json` records the count of each stage (`rounds_by_stage`).
+
+Disk repeats stay short on purpose: the 8 GB fill, the steady-state random write (which depends on the state the previous test left), the sequential tests, the queue-depth sweep and the DB-style tests each take long and would turn 71 minutes into hours, so they run once. The repeated tests are the ones whose noise matters most for a decision (latency tail, random IOPS, mixed load, commit latency). Details in [docs/tests.md](docs/tests.md#rounds).
 
 ### STREAM source
 
@@ -147,7 +170,7 @@ With `RAW_DEV=/dev/sdX CONFIRM_WIPE=yes` the `disk` and `burnin` stages write to
 
 ## Reports
 
-Every run also writes `meta.json` (vmbench and cpubench version, label, stages, `QUICK`, start and end time in UTC, architecture, vCPU count; no host name or address). `report.py` reads it, and falls back to `info.txt` for runs that have none. A `meta.json` whose `end_utc` is `null` belongs to a run that did not finish.
+Every run also writes `meta.json` (vmbench and cpubench version, label, stages, `QUICK`, rounds of each stage, start and end time in UTC, architecture, vCPU count; no host name or address). `report.py` reads it, and falls back to `info.txt` for runs that have none. A `meta.json` whose `end_utc` is `null` belongs to a run that did not finish.
 
 Every run ends by printing tables and writing `report.md` and `report.html` into the result folder. The text is English. `--lang th` (or `VMBENCH_LANG=th`) gives the Thai text of earlier versions: same numbers and verdicts, only the words differ. You can also run the report on its own:
 
@@ -161,7 +184,7 @@ Every run ends by printing tables and writing `report.md` and `report.html` into
 
 Marks and warnings you will see:
 
-- `*` the value was measured once, so its variation is unknown (currently `mem`, `disk` and `web`)
+- `*` the value was measured once (one round), so its variation is unknown. With the default rounds only `disk` values (1 round) and the CPU steal context values still carry it; `--disk-rounds` removes it from disk
 - `!` the coefficient of variation is 5% or more
 - "not clearly different": the difference is within the larger CV of the two runs, or 1%
 - warnings for different cpubench versions, `QUICK=1`, different test sizes or vCPU counts, high CPU steal, failed stages, and disk results taken from files rather than a raw device

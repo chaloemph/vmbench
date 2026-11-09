@@ -352,6 +352,10 @@ class Run:
                                    ("rounds", "rounds"), ("cpubench_version", "cpubench"), ("start_utc", "date")):
             if text(meta_key) is not None:
                 self.info[info_key] = text(meta_key)
+        # per-stage repeats (vmbench 0.2+): "cpu 3, mem 3, disk 1, web 3" replaces the single cpu count
+        by_stage = self.meta.get("rounds_by_stage")
+        if isinstance(by_stage, dict) and by_stage:
+            self.info["rounds"] = ", ".join(f"{k} {v}" for k, v in by_stage.items())
 
     @property
     def version(self):

@@ -6,7 +6,9 @@
 
 stage_cpu_order() { echo 10; }
 stage_cpu_default() { echo yes; }
-stage_cpu_time() { echo "14 min"; }
+stage_cpu_rounds() { echo "$ROUNDS"; }
+# 14 min for the default 3 rounds, so about 4.7 min per round
+stage_cpu_time() { echo "$(( (${ROUNDS:-3} * 14 + 2) / 3 )) min"; }
 stage_cpu_note() { echo "default"; }
 
 stage_cpu_check() {

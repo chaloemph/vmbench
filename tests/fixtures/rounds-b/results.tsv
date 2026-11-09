@@ -1,0 +1,19 @@
+id	metric	value	unit	round
+cpu.sysbench.prime.1t	sysbench cpu 1t	1500.0	events/s	1
+cpu.sysbench.prime.1t	sysbench cpu 1t	1502.5	events/s	2
+cpu.sysbench.prime.1t	sysbench cpu 1t	1498.0	events/s	3
+mem.stream.triad.max	stream triad (N=100000000)	143000.0	MB/s	1
+mem.stream.triad.max	stream triad (N=100000000)	144500.0	MB/s	2
+mem.stream.triad.max	stream triad (N=100000000)	142000.0	MB/s	3
+mem.stream.copy.max	stream copy (N=100000000)	150500.0	MB/s	1
+mem.stream.copy.max	stream copy (N=100000000)	151200.0	MB/s	2
+mem.stream.copy.max	stream copy (N=100000000)	149800.0	MB/s	3
+mem.lmbench.lat-mem-rd.1t	lat_mem_rd -t 2048MB	100.4	ns	1
+mem.lmbench.lat-mem-rd.1t	lat_mem_rd -t 2048MB	99.8	ns	2
+mem.lmbench.lat-mem-rd.1t	lat_mem_rd -t 2048MB	100.9	ns	3
+web.cpubench.mix.max-rps	cpubench web mix max RPS @ SLO (loopback)	27800.0	RPS	1
+web.cpubench.mix.max-rps	cpubench web mix max RPS @ SLO (loopback)	26000.0	RPS	2
+web.cpubench.mix.max-rps	cpubench web mix max RPS @ SLO (loopback)	30000.0	RPS	3
+disk.fio.randread-4k.qd32x4	fio randread 4k qd32x4	180500.0	IOPS	1
+disk.fio.randread-4k.qd32x4	fio randread 4k qd32x4	181500.0	IOPS	2
+disk.fio.randread-4k.qd1.p99	fio randread 4k qd1 p99	160.0	us	1
