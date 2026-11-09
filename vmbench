@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# vmbench - one-command VM performance benchmark. Entry point; the work is in lib/ and stages/.
+#
+#   vmbench run [flags]                     run the stages (flags: --with --only --peer --hours --list --metrics --help)
+#   vmbench list                            show the stages and whether this machine is ready for them (= run --list)
+#   vmbench report show DIR                 tables for one result folder          (wraps report.py)
+#   vmbench report compare DIR DIR [DIR..]  compare result folders, first is the baseline
+#   vmbench setup cpubench|postgres         download cpubench / create the PostgreSQL cluster for the pg stage
+#   vmbench version                         print the version
+#   vmbench help                            this text
+#
+# Exit codes: 0 success, 2 usage or pre-flight error (nothing was run).
+# The script finds its own folder through symlinks, so it can be called from any directory or linked into PATH.
+set -uo pipefail
+
+# resolve symlinks (readlink without -f, which is not portable) to find the real folder
+src=${BASH_SOURCE[0]}
+while [ -L "$src" ]; do
+  dir=$(cd -P "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case $src in /*) ;; *) src=$dir/$src ;; esac
+done
+VMBENCH_HOME=$(cd -P "$(dirname "$src")" && pwd)
+export VMBENCH_HOME
+
+# shellcheck source=lib/common.sh
+. "$VMBENCH_HOME/lib/common.sh"
+# shellcheck source=lib/metrics.sh
+. "$VMBENCH_HOME/lib/metrics.sh"
+# shellcheck source=lib/stages.sh
+. "$VMBENCH_HOME/lib/stages.sh"
+# shellcheck source=lib/preflight.sh
+. "$VMBENCH_HOME/lib/preflight.sh"
+# shellcheck source=lib/meta.sh
+. "$VMBENCH_HOME/lib/meta.sh"
+# shellcheck source=lib/run.sh
+. "$VMBENCH_HOME/lib/run.sh"
+
+main_usage() { sed -n '2,/^set -uo/{/^set -uo/d;s/^# \{0,1\}//;p}' "$VMBENCH_HOME/vmbench"; }
+
+cmd_report() {
+  case ${1:-} in
+    show|compare) ;;
+    "") die "report needs a subcommand: show DIR | compare DIR DIR [DIR...]  (see: vmbench help)" ;;
+    *) die "unknown report subcommand '$1' (use show or compare)" ;;
+  esac
+  need python3 || die "python3 is required for reports"
+  exec python3 -I "$VMBENCH_HOME/report.py" "$@"
+}
+
+cmd_setup() {
+  case ${1:-} in
+    cpubench) shift; exec bash "$VMBENCH_HOME/setup/cpubench.sh" "$@" ;;
+    postgres) shift; exec bash "$VMBENCH_HOME/setup/postgres.sh" "$@" ;;
+    "") die "setup needs a target: cpubench or postgres" ;;
+    *) die "unknown setup target '$1' (use cpubench or postgres)" ;;
+  esac
+}
+
+cmd=${1:-}
+[ $# -eq 0 ] || shift
+case $cmd in
+  run) load_stages; cmd_run "$@" ;;
+  list)
+    [ $# -eq 0 ] || die "list takes no arguments, got '$1'"
+    load_stages; cmd_run --list ;;
+  report) cmd_report "$@" ;;
+  setup) cmd_setup "$@" ;;
+  version|--version|-V) echo "vmbench $(vmbench_version)" ;;
+  help|--help|-h) main_usage ;;
+  "") main_usage >&2; exit 2 ;;
+  *) die "unknown command '$cmd' (run, list, report, setup, version, help)" ;;
+esac

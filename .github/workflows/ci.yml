@@ -27,13 +27,13 @@ jobs:
 
       - name: Bash syntax
         run: |
-          for f in *.sh tests/*.sh; do bash -n "$f" && echo "ok  $f"; done
+          for f in vmbench ./*.sh lib/*.sh stages/*.sh setup/*.sh tests/*.sh; do bash -n "$f" && echo "ok  $f"; done
 
       - name: ShellCheck (warnings and errors)
         run: |
           command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck
           shellcheck --version | sed -n 2p
-          shellcheck -S warning *.sh tests/*.sh
+          shellcheck -x -S warning vmbench ./*.sh lib/*.sh stages/*.sh setup/*.sh tests/*.sh
 
       - name: Python syntax
         run: |

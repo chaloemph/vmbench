@@ -20,7 +20,7 @@ Every value in `results.tsv` has a stable ID. The ID, not the text of the metric
 - **Unit**: `varies` means the unit comes from cpubench for each benchmark (for example `ops/s` or `MB/s`).
 - A metric is only recorded when its tool succeeded, so a result folder can hold a subset of these IDs. `status.tsv` says which steps failed or were skipped.
 
-The table below is the same data as `bash run-benchmark.sh --metrics`, which is the source of truth. `tests/test_ids.py` fails when this file and the script disagree.
+The table below is the same data as `vmbench run --metrics` (or `bash run-benchmark.sh --metrics`), which is the source of truth: it is defined in `lib/metrics.sh`. `tests/test_ids.py` fails when this file and that table disagree.
 
 ## Metrics
 
@@ -102,3 +102,27 @@ The table below is the same data as `bash run-benchmark.sh --metrics`, which is 
 ## Old result folders
 
 Result folders written before the IDs existed have a `results.tsv` with the header `row`, `metric`, `value`, `unit`, `round`, where `row` is a number from the original spreadsheet test plan. `report.py` still reads them and maps each row to the ID above through the `LEGACY` table in `report.py`. Rows it does not know are shown under `<stage>.row<N>.<text>`.
+
+## Adding a stage or a metric
+
+- **A metric**: add one line to the table in `lib/metrics.sh`, one row here (same order), and the `rec` call in the stage file. `tests/test_ids.py` checks all three agree, and that `report.py` has a legacy mapping for it.
+- **A stage**: add one file, `stages/<name>.sh`. Nothing else has to change: `vmbench` finds it, lists it in `--list` and `--help`, pre-flight checks it and runs it. The file defines these functions, documented in `lib/stages.sh`:
+
+  - `stage_<name>_order`: a number that sorts the stages (`info` is 0, the others 10, 20, ...)
+  - `stage_<name>_default`: `yes` (runs without `--with`), `no` (only when asked) or `always`
+  - `stage_<name>_time`: typical duration shown by `--list`
+  - `stage_<name>_note`: what the stage needs, shown in `--help` (may print nothing)
+  - `stage_<name>_check`: add to `PROBLEMS` for everything that stops the stage (pre-flight)
+  - `stage_<name>_run`: run it; `rec` for values, `ok`, `bad` and `skip` for steps
+
+## What the tests cover
+
+`bash tests/run.sh` runs five groups, none of which needs a benchmark tool or the network:
+
+- `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings
+- `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`
+- `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`
+- `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks
+- `tests/test_stages.sh`: every file in `stages/` is sourced and defines the required functions; a new stage file is picked up with no other change
+
+CI also runs `bash -n` and `shellcheck -x -S warning` on `vmbench`, the wrappers, `lib/`, `stages/`, `setup/` and `tests/`.

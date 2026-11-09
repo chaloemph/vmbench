@@ -1,0 +1,39 @@
+@NAME@ - run the VM performance tests (cpu, mem, disk, pg, net, web, burn-in) on this machine and collect the results.
+
+  @CMD@                       # cpu, mem, disk; results in ~/bench-results/<label>-<time>/
+  @CMD@ --with web,pg         # the default stages plus web and pg
+  @CMD@ --only disk           # only these stages
+  @CMD@ --with net --peer 192.0.2.10
+  @CMD@ --only burnin --hours 48
+  QUICK=1 @CMD@               # smoke run: tiny sizes and durations, to check the setup
+
+Options:
+  --with LIST   add stages to the default ones (comma separated)
+  --only LIST   run only these stages (cannot be combined with --with)
+  --peer HOST   peer machine for the net stage; it must run: iperf3 -s -D ; sockperf server -i 0.0.0.0 &
+  --hours N     length of the burn-in (default: 48; QUICK=1 always runs 40 seconds)
+  --list        show the stages, their duration and whether this machine is ready for them
+  --metrics     print the table of metric ids (id|unit|direction|tool|label|what it measures) and exit
+  -h, --help    show this text
+
+Stages (ram is accepted for mem). info always runs, because report.py needs it.
+@STAGES@
+Every result has a stable id such as cpu.sysbench.prime.1t, listed by --metrics and in docs/tests.md.
+
+Every selected stage is checked before anything runs. If something is missing, the script lists all of it
+and exits with code 2. A run of everything that needs no peer is: --with web,pg  (add net when a peer is available)
+
+Settings (environment variables):
+  STAGES       space separated stage list, ignored when --with or --only is given
+  LABEL        name of this machine in the results           (default: hostname)
+  OUT          result folder                                 (default: ~/bench-results/<label>-<time>)
+  ROUNDS       repeats of cpu stage                          (default: 3)
+  QUICK        1 = short smoke run                           (default: 0)
+  CB           cpubench folder (setup-cpubench.sh output)    (default: ~/cpubench-current)
+  DATA_DIR     folder for fio test files                     (default: ~/bench-data)
+  FIO_SIZE     size of the fio test file                     (default: 8G)
+  RAW_DEV      raw test disk, e.g. /dev/sdb (needs CONFIRM_WIPE=yes, ERASES THE WHOLE DISK)
+  DB_DIR WAL_DIR  folders for disk.fio.db-* and disk.wal.*           (default: DATA_DIR; e.g. /pgdata /pgwal)
+  PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench)
+  PEER         same as --peer
+  BURNIN_HOURS same as --hours

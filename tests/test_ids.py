@@ -1,4 +1,4 @@
-"""Tests for the stable metric IDs: the table in run-benchmark.sh, docs/tests.md, the legacy mapping in
+"""Tests for the stable metric IDs: the table in lib/metrics.sh, docs/tests.md, the legacy mapping in
 report.py, the recording calls in the script, and loading of old and new result folders.
 
 They use only the synthetic folders under tests/fixtures, the standard library, and `bash run-benchmark.sh --metrics`
@@ -125,8 +125,14 @@ class RecordingCalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.table = script_table()
-        with open(SCRIPT, encoding="utf-8") as f:
-            cls.source = f.read()
+        # the script was split in phase 3: the rec calls now live in lib/ and stages/
+        parts = []
+        for sub in ("lib", "stages"):
+            for name in sorted(os.listdir(os.path.join(ROOT, sub))):
+                if name.endswith(".sh"):
+                    with open(os.path.join(ROOT, sub, name), encoding="utf-8") as f:
+                        parts.append(f.read())
+        cls.source = "\n".join(parts)
 
     def recorded(self):
         return set(re.findall(r"\brec \"?([a-z0-9]+(?:\.[a-z0-9-]+)+)\"?[ ;]", self.source))
