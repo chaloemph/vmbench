@@ -20,7 +20,7 @@ vmbench runs a fixed set of well-known tools (sysbench, 7-Zip, OpenSSL, STREAM, 
 
 `info` always runs: it records the kernel, CPU model, flags, NUMA layout, disks, tool versions and CPU steal, because a result without them cannot be interpreted later.
 
-Each value in `results.tsv` has a stable ID of the form `<stage>.<tool>.<test>[.<variant>]`, for example `cpu.sysbench.prime.1t` (one thread) or `mem.stream.triad.max` (all vCPUs). The full list, with what each one measures, its tool, unit and whether higher or lower is better, is in [docs/tests.md](docs/tests.md); `bash run-benchmark.sh --metrics` prints the same table. Result folders from older versions, which numbered the rows after a spreadsheet, still load: `report.py` maps those rows to the IDs.
+Each value in `results.tsv` has a stable ID of the form `<stage>.<tool>.<test>[.<variant>]`, for example `cpu.sysbench.prime.1t` (one thread) or `mem.stream.triad.max` (all vCPUs). The full list, with what each one measures, its tool, unit and whether higher or lower is better, is in [docs/tests.md](docs/tests.md); `vmbench run --metrics` prints the same table. Result folders from older versions, which numbered the rows after a spreadsheet, still load: `report.py` maps those rows to the IDs.
 
 ## Requirements
 
@@ -37,16 +37,18 @@ Running the benchmark itself needs no `sudo`. The test files are created under `
 ```bash
 git clone https://github.com/chaloemph/vmbench.git
 cd vmbench
-bash setup-cpubench.sh          # downloads cpubench from its GitHub release and verifies the sha256
-bash run-benchmark.sh --list    # shows every stage and whether this machine is ready for it
-bash run-benchmark.sh           # cpu, mem, disk
+./vmbench setup cpubench        # downloads cpubench from its GitHub release and verifies the sha256
+./vmbench list                  # shows every stage and whether this machine is ready for it
+./vmbench run                   # cpu, mem, disk
 ```
+
+`vmbench` finds its own folder, so it works from any directory and through a symlink (for example `ln -s "$PWD/vmbench" ~/.local/bin/vmbench`). The older commands still work and do the same: `bash run-benchmark.sh ...` is `vmbench run ...`, `bash setup-cpubench.sh` is `vmbench setup cpubench`, and `bash setup-postgres-bench.sh` is `vmbench setup postgres`.
 
 Long runs belong in `tmux`, so a dropped SSH session does not stop them:
 
 ```bash
 tmux new -s bench
-LABEL=my-vm bash run-benchmark.sh --with web
+LABEL=my-vm ./vmbench run --with web
 ```
 
 A full run of `cpu`, `mem` and `disk` took about 1.5 hours on 8 vCPU VMs with an 8 GB test file, most of it in `disk`.
@@ -54,8 +56,10 @@ A full run of `cpu`, `mem` and `disk` took about 1.5 hours on 8 vCPU VMs with an
 ## Options
 
 ```text
-bash run-benchmark.sh [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--metrics] [--help]
+vmbench run [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--metrics] [--help]
 ```
+
+`bash run-benchmark.sh` takes the same options.
 
 | Option | Meaning |
 |---|---|
@@ -68,11 +72,11 @@ bash run-benchmark.sh [--with LIST | --only LIST] [--peer HOST] [--hours N] [--l
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (cpu repeats, default 3), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). See the header of `run-benchmark.sh` for the full list.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (cpu repeats, default 3), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
 
 ### PostgreSQL stage
 
-`bash setup-postgres-bench.sh` creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster.
+`vmbench setup postgres` (or `bash setup-postgres-bench.sh`) creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster.
 
 ### Raw disk
 
@@ -85,11 +89,11 @@ Every run also writes `meta.json` (vmbench and cpubench version, label, stages, 
 Every run ends by printing tables and writing `report.md` and `report.html` into the result folder. You can also run the report on its own:
 
 ```bash
-python3 report.py show    ~/bench-results/vm-a
-python3 report.py compare ~/bench-results/vm-a ~/bench-results/vm-b   # first folder is the baseline
+./vmbench report show    ~/bench-results/vm-a
+./vmbench report compare ~/bench-results/vm-a ~/bench-results/vm-b   # first folder is the baseline
 ```
 
-`compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only.
+(`python3 report.py show|compare ...` does the same.) `compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only.
 
 Marks and warnings you will see:
 
@@ -114,11 +118,15 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 
 | File | Purpose |
 |---|---|
-| `run-benchmark.sh` | runs the stages and records the results |
+| `vmbench` | entry script: `run`, `list`, `report`, `setup`, `version`, `help` |
+| `run-benchmark.sh` | compatibility wrapper, the same as `vmbench run` |
+| `lib/` | shared helpers: `common.sh` (logging, `die`), `metrics.sh` (the metric table and `rec`), `preflight.sh`, `rawdev.sh` (raw-device safety), `meta.sh` (`meta.json`), `stages.sh` (stage loader), `run.sh` (option parsing and the run), `run-usage.txt` (the `--help` text) |
+| `stages/<stage>.sh` | one file per stage: `cpu`, `mem`, `disk`, `pg`, `net`, `web`, `burnin`, `info`. Adding a stage means adding one file, see [docs/tests.md](docs/tests.md) |
 | `report.py` | tables and comparisons (standard library only) |
-| `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage |
-| `setup-cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
-| `setup-postgres-bench.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
+| `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage; how to add a stage |
+| `setup/cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
+| `setup/postgres.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
+| `setup-cpubench.sh`, `setup-postgres-bench.sh` | wrappers for the two setup scripts at their old paths |
 
 ## Development
 
@@ -126,9 +134,9 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 bash tests/run.sh
 ```
 
-runs the Python tests for `report.py` and the metric IDs (the table in `run-benchmark.sh`, `docs/tests.md` and the old-format mapping must agree) and the command line tests for `run-benchmark.sh`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
+runs the Python tests for `report.py` and the metric IDs (the table in `lib/metrics.sh`, `docs/tests.md` and the old-format mapping must agree), the command line tests for `vmbench` and `run-benchmark.sh`, and a test that every file in `stages/` defines the required functions. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
 
-CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n`, ShellCheck (warnings and errors) and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
+CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n` and ShellCheck (`-x`, warnings and errors) on every shell file including `lib/` and `stages/`, and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
 
 ## License
 
