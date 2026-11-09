@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # vmbench - one-command VM performance benchmark. Entry point; the work is in lib/ and stages/.
 #
-#   vmbench run [flags]                     run the stages (flags: --with --only --peer --hours --list --metrics --help)
+#   vmbench run [flags]                     run the stages (flags: --with --only --peer --hours --rounds --disk-rounds --detach --list --metrics --help)
+#   vmbench run --detach [--session NAME]   the same, but inside a new tmux session; returns at once (needs tmux)
+#   vmbench status [DIR]                    is a run in progress, which stage, how long (default: the newest result folder)
 #   vmbench list                            show the stages and whether this machine is ready for them (= run --list)
 #   vmbench report show DIR                 tables for one result folder          (wraps report.py)
 #   vmbench report compare DIR DIR [DIR..]  compare result folders, first is the baseline
@@ -36,6 +38,8 @@ export VMBENCH_HOME
 . "$VMBENCH_HOME/lib/preflight.sh"
 # shellcheck source=lib/meta.sh
 . "$VMBENCH_HOME/lib/meta.sh"
+# shellcheck source=lib/status.sh
+. "$VMBENCH_HOME/lib/status.sh"
 # shellcheck source=lib/run.sh
 . "$VMBENCH_HOME/lib/run.sh"
 
@@ -67,10 +71,11 @@ case $cmd in
   list)
     [ $# -eq 0 ] || die "list takes no arguments, got '$1'"
     load_stages; cmd_run --list ;;
+  status) cmd_status "$@" ;;
   report) cmd_report "$@" ;;
   setup) cmd_setup "$@" ;;
   version|--version|-V) echo "vmbench $(vmbench_version)" ;;
   help|--help|-h) main_usage ;;
   "") main_usage >&2; exit 2 ;;
-  *) die "unknown command '$cmd' (run, list, report, setup, version, help)" ;;
+  *) die "unknown command '$cmd' (run, list, status, report, setup, version, help)" ;;
 esac

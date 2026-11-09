@@ -46,6 +46,7 @@ show_stages() {
     fi
   done
   echo
-  echo "TIME: cpu, mem, disk, web were measured on 8 vCPU VMs with an 8 GB test file."
+  echo "TIME: cpu, mem, disk, web were measured on 8 vCPU VMs with an 8 GB test file; cpu, mem and web grow with the"
+  echo "      rounds (--rounds N, now cpu $ROUNDS, mem $MEM_ROUNDS, web $WEB_ROUNDS), disk only with --disk-rounds N (now $DISK_ROUNDS)."
   echo "      pg and net come from the test durations in this script and have not been timed on a real run."
 }

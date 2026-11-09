@@ -107,9 +107,10 @@ import json, re, sys
 path, *hosts = sys.argv[1:]
 text = open(path).read()
 m = json.loads(text)
-want = {"schema", "vmbench_version", "cpubench_version", "label", "stages", "quick", "rounds", "start_utc", "end_utc", "arch", "nproc", "ram_gb"}
+want = {"schema", "vmbench_version", "cpubench_version", "label", "stages", "quick", "rounds", "rounds_by_stage", "start_utc", "end_utc", "arch", "nproc", "ram_gb"}
 assert set(m) == want, sorted(set(m) ^ want)
 assert m["label"] == "ci-label" and m["quick"] is True and m["stages"] == ["info"], m
+assert m["rounds_by_stage"] == {}, m
 assert m["vmbench_version"] and isinstance(m["nproc"], int) and m["nproc"] > 0
 ts = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 assert ts.match(m["start_utc"]) and ts.match(m["end_utc"]) and m["start_utc"] <= m["end_utc"], m

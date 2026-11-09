@@ -1,0 +1,6 @@
+stage	step	result
+cpu	sysbench st r1	OK
+mem	stream r1	OK
+mem	lat_mem_rd r1	OK
+web	web-r1.json	OK
+disk	fio lat	OK

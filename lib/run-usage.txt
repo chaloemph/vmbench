@@ -4,6 +4,8 @@
   @CMD@ --with web,pg         # the default stages plus web and pg
   @CMD@ --only disk           # only these stages
   @CMD@ --with net --peer 192.0.2.10
+  @CMD@ --rounds 5            # cpu, mem and web repeat 5 times instead of 3
+  @CMD@ --detach              # start in a tmux session and return; follow with: vmbench status
   @CMD@ --only burnin --hours 48
   QUICK=1 @CMD@               # smoke run: tiny sizes and durations, to check the setup
 
@@ -12,6 +14,10 @@ Options:
   --only LIST   run only these stages (cannot be combined with --with)
   --peer HOST   peer machine for the net stage; it must run: iperf3 -s -D ; sockperf server -i 0.0.0.0 &
   --hours N     length of the burn-in (default: 48; QUICK=1 always runs 40 seconds)
+  --rounds N    repeats of cpu, mem and web (default 3; QUICK=1: 1); every round is one row per value in results.tsv
+  --disk-rounds N  repeats of the disk stage (default 1, each extra round is about 20 min, see docs/tests.md)
+  --detach      after the pre-flight passes, run inside a new tmux session and return at once
+  --session NAME  name of that tmux session (default: vmbench-<label>)
   --list        show the stages, their duration and whether this machine is ready for them
   --metrics     print the table of metric ids (id|unit|direction|tool|label|what it measures) and exit
   -h, --help    show this text
@@ -27,7 +33,9 @@ Settings (environment variables):
   STAGES       space separated stage list, ignored when --with or --only is given
   LABEL        name of this machine in the results           (default: hostname)
   OUT          result folder                                 (default: ~/bench-results/<label>-<time>)
-  ROUNDS       repeats of cpu stage                          (default: 3)
+  ROUNDS       repeats of cpu, mem and web                   (default: 3)
+  MEM_ROUNDS WEB_ROUNDS  repeats of one of them                (default: ROUNDS)
+  DISK_ROUNDS  repeats of the disk stage                     (default: 1)
   QUICK        1 = short smoke run                           (default: 0)
   CB           cpubench folder (setup-cpubench.sh output)    (default: ~/cpubench-current)
   DATA_DIR     folder for fio test files                     (default: ~/bench-data)

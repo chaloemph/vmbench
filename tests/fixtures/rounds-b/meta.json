@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "vmbench_version": "v0.0.0-fixture",
+  "cpubench_version": null,
+  "label": "rounds-b",
+  "stages": [
+    "info",
+    "cpu",
+    "mem",
+    "disk",
+    "web"
+  ],
+  "quick": false,
+  "rounds": 3,
+  "rounds_by_stage": {
+    "cpu": 3,
+    "mem": 3,
+    "disk": 2,
+    "web": 3
+  },
+  "start_utc": "2000-01-01T00:00:00Z",
+  "end_utc": "2000-01-01T01:00:00Z",
+  "arch": "x86_64",
+  "nproc": 8,
+  "ram_gb": 16
+}

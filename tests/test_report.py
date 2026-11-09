@@ -121,6 +121,67 @@ class Loading(unittest.TestCase):
         self.assertEqual(report.mark(triad), "*")
         self.assertEqual(report.cv_text(triad), "n/a")
 
+    # ---- repeated mem, web and disk rows (rounds-a / rounds-b: synthetic, 3 rounds of mem and web, 2 of one disk test)
+    @staticmethod
+    def by_id(run, ident):
+        return next(m for m in run.metrics if m.id == ident)
+
+    def test_mem_and_web_rounds_have_median_and_cv(self):
+        a = fixture("rounds-a")
+        for ident in ("mem.stream.triad.max", "mem.stream.copy.max", "mem.lmbench.lat-mem-rd.1t", "web.cpubench.mix.max-rps"):
+            m = self.by_id(a, ident)
+            self.assertEqual(len(m.values), 3, ident)
+            self.assertIsNotNone(m.cv, ident)
+            self.assertNotEqual(report.mark(m), "*", ident)
+            self.assertTrue(report.cv_text(m).endswith("%"), ident)
+        triad = self.by_id(a, "mem.stream.triad.max")
+        self.assertEqual(triad.median, 130000.0)
+        self.assertAlmostEqual(triad.cv, 0.82, places=1)
+        self.assertEqual(report.mark(triad), "")           # CV below 5%: no mark
+        web = self.by_id(a, "web.cpubench.mix.max-rps")
+        self.assertEqual(report.mark(web), "!")            # CV above 5%: noisy
+        self.assertAlmostEqual(web.cv, 6.8, places=1)
+
+    def test_star_only_where_there_is_one_round(self):
+        a = fixture("rounds-a")
+        self.assertEqual(report.mark(self.by_id(a, "disk.fio.randread-4k.qd1.p99")), "*")      # 1 round
+        self.assertEqual(report.mark(self.by_id(a, "disk.fio.randread-4k.qd32x4")), "")        # 2 rounds
+        self.assertEqual(len(self.by_id(a, "disk.fio.randread-4k.qd32x4").values), 2)
+
+    def test_rounds_per_stage_come_from_meta(self):
+        self.assertEqual(fixture("rounds-a").info["rounds"], "cpu 3, mem 3, disk 2, web 3")
+        self.assertEqual(fixture("new-a").info["rounds"], "3")   # a meta.json without rounds_by_stage keeps the single number
+
+    def test_show_prints_cv_for_repeated_mem_and_web(self):
+        r = cli("show", os.path.join(FIX, "rounds-a"), "--no-files")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        triad = next(line for line in r.stdout.splitlines() if line.startswith("mem.stream.triad "))
+        self.assertRegex(triad, r"\b3\s+0\.8%")      # rounds column, then the CV
+        web = next(line for line in r.stdout.splitlines() if line.startswith("web.cpubench.mix.max-rps "))
+        self.assertRegex(web, r"27,000!\s+3\s+6\.8%")
+        self.assertNotRegex(triad, r"n/a")
+        self.assertIn("cpu 3, mem 3, disk 2, web 3", r.stdout)
+
+    def test_compare_uses_cv_of_repeated_mem_and_web(self):
+        a, b = fixture("rounds-a"), fixture("rounds-b")
+        diff, verdict = report.judge(self.by_id(a, "mem.stream.triad.max"), self.by_id(b, "mem.stream.triad.max"))
+        self.assertAlmostEqual(diff, 10.0, places=1)
+        self.assertEqual(verdict, 1)                      # +10% on a 1% CV: clearly better
+        diff, verdict = report.judge(self.by_id(a, "web.cpubench.mix.max-rps"), self.by_id(b, "web.cpubench.mix.max-rps"))
+        self.assertAlmostEqual(diff, 2.96, places=1)
+        self.assertEqual(verdict, 0)                      # +3% on a 6.8% CV: not clearly different
+        diff, verdict = report.judge(self.by_id(a, "mem.lmbench.lat-mem-rd.1t"), self.by_id(b, "mem.lmbench.lat-mem-rd.1t"))
+        self.assertEqual(verdict, 0)
+
+    def test_compare_output_has_rounds_and_no_once_mark_for_repeated_tests(self):
+        r = cli("compare", os.path.join(FIX, "rounds-a"), os.path.join(FIX, "rounds-b"), "--no-files")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        triad = next(line for line in r.stdout.splitlines() if line.startswith("mem.stream.triad "))
+        self.assertIn("+10.0%", triad)
+        self.assertNotIn("*", triad)                      # both sides have 3 rounds
+        single = next(line for line in r.stdout.splitlines() if line.startswith("disk.fio.randread-4k.qd1.p99 "))
+        self.assertIn("160.0*", single)                   # one round on both sides: still marked
+
     def test_array_size_is_taken_out_of_the_metric_name(self):
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "results.tsv"), "w") as f:

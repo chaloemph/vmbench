@@ -99,6 +99,28 @@ The table below is the same data as `vmbench run --metrics` (or `bash run-benchm
 | `info.cpu.steal.peak` | Highest CPU steal sample during the run (context, not scored) | mpstat | % | none | info |
 | `info.fio.fill-write-1m` | Speed of the 1 MiB sequential fill before the disk tests (context, not scored) | fio | MB/s | none | info |
 
+## Rounds
+
+A stage that repeats writes one `results.tsv` row per value per round (the `round` column, 1 to N). `report.py` takes the median and the CV over the rounds; a value with one round is marked `*` (CV unknown), a value with two or more is not, and `!` marks a CV of 5% or more. Nothing else in the verdict logic depends on the rounds. `meta.json` has `rounds_by_stage` (for example `{"cpu": 3, "mem": 3, "disk": 1, "web": 3}`), and `report.py` shows it as "cpu 3, mem 3, ...".
+
+| Stage | Default | Option | One round |
+|---|---|---|---|
+| cpu | 3 | `--rounds N`, `ROUNDS` | all cpu metrics |
+| mem | 3 | `--rounds N`, `MEM_ROUNDS` | `mem.stream.triad.max`, `mem.stream.copy.max`, `mem.lmbench.lat-mem-rd.1t` (STREAM is compiled once) |
+| web | 3 | `--rounds N`, `WEB_ROUNDS` | `web.cpubench.mix.max-rps` (the whole loopback test, a new label per round) |
+| disk | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1: every `disk.*` metric. Rounds 2 to N: only the ones below |
+
+`--rounds` and the variables take a whole number of 1 or more (exit 2 otherwise). `ROUNDS` is the default of cpu, mem and web; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage; `--rounds` overrides all three; `QUICK=1` means one round unless rounds are given.
+
+**Disk rounds.** One disk round of the full sequence takes about 70 minutes and writes 8 GB, so `disk` defaults to one round and `DISK_ROUNDS=N` repeats only the tests that are cheap (about 20 minutes per extra round) and whose run-to-run noise matters for a decision, on the file that is already filled:
+
+- `disk.fio.randread-4k.qd1.p99`, `disk.fio.randread-4k.qd1.p999` (tail latency)
+- `disk.fio.randread-4k.qd32x4`
+- `disk.fio.mixed-70-30-4k.read`, `disk.fio.mixed-70-30-4k.write`
+- `disk.wal.fdatasync.avg`, `disk.wal.fdatasync.p99`, `disk.wal.commit-iops.qd1`
+
+Not repeated, they run once whatever `DISK_ROUNDS` is: the fill (`info.fio.fill-write-1m`), the steady-state random write (it needs the fill and depends on the history of the device, so a second run is not a repeat of the first), the sequential tests, the queue-depth sweep and the `disk.fio.db-*` tests. Raw files of round 1 keep their old names (`fio-34-lat.json`); later rounds add `-r2`, `-r3`.
+
 ## STREAM source
 
 `mem.stream.*` is measured with a pinned copy of the official `stream.c` (jeffhammond/STREAM), defined in `lib/stream.sh`:
@@ -131,13 +153,15 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 
 ## What the tests cover
 
-`bash tests/run.sh` runs six groups, none of which needs a benchmark tool or the network:
+`bash tests/run.sh` runs these groups, none of which needs a benchmark tool or the network:
 
 - `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings
 - `tests/test_lang.py`: the English and Thai message catalogs, `--lang`, `VMBENCH_LANG`, no Thai in English output
 - `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`
 - `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`
 - `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks
+- `tests/test_detach.sh`: `vmbench run --detach` and `vmbench status`, with a fake `tmux` on PATH (no real tmux needed), and with the real one when it is installed
+- `tests/test_rounds.sh`: `--rounds`, `--disk-rounds` and their variables (validation, defaults, QUICK), the times of `--list`, and the mem, web and disk stages repeating with stub tools
 - `tests/test_stages.sh`: every file in `stages/` is sourced and defines the required functions; a new stage file is picked up with no other change
 - `tests/test_stream.sh`: the STREAM pin: right and wrong sha256 for `STREAM_C`, a downloaded file and the cache (file:// URLs, a synthetic `stream.c`), `STREAM_SKIP_CHECK`, the mem stage with a stub
 
