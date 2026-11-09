@@ -25,11 +25,11 @@ def fixture(name):
     return report.Run(os.path.join(FIX, name))
 
 
-def metric(name, values, unit="IOPS", row="35"):
+def metric(name, values, unit="IOPS", ident="disk.fio.randread-4k.qd32x4"):
     import statistics
     mean = statistics.mean(values)
     cv = statistics.pstdev(values) / mean * 100 if len(values) > 1 and mean else None
-    return report.Metric(row, name, name, "", unit, values, statistics.median(values), cv)
+    return report.Metric(ident, name, name, "", unit, values, statistics.median(values), cv)
 
 
 def cli(*args):
@@ -71,11 +71,20 @@ class Direction(unittest.TestCase):
 
 
 class Sections(unittest.TestCase):
-    def test_rows_map_to_sections(self):
-        expected = {"7": "CPU", "23": "CPU", "26": "Memory", "35": "Disk", "46": "Disk", "47": "PostgreSQL",
-                    "52": "Network", "55": "Web", "65": "Burn-in", "info": report.INFO_SECTION}
-        for row, section in expected.items():
-            self.assertEqual(report.section_of(row), section, row)
+    def test_ids_map_to_sections(self):
+        expected = {"cpu.sysbench.prime.1t": "CPU", "cpu.cpubench.int.sort.max": "CPU", "mem.stream.triad.max": "Memory",
+                    "disk.fio.randread-4k.qd32x4": "Disk", "disk.wal.commit-iops.qd1": "Disk",
+                    "pg.pgbench.tpcb.tps": "PostgreSQL", "net.sockperf.pingpong.avg": "Network",
+                    "web.cpubench.mix.max-rps": "Web", "burnin.errors": "Burn-in",
+                    "info.cpu.steal.avg": report.INFO_SECTION, "something.unknown": report.INFO_SECTION}
+        for ident, section in expected.items():
+            self.assertEqual(report.section_of(ident), section, ident)
+
+    def test_variant_suffix_is_not_part_of_the_test(self):
+        self.assertEqual(report.id_base("cpu.sysbench.prime.1t"), "cpu.sysbench.prime")
+        self.assertEqual(report.id_base("cpu.sysbench.prime.max"), "cpu.sysbench.prime")
+        self.assertEqual(report.id_base("disk.wal.fdatasync.avg"), "disk.wal.fdatasync.avg")
+        self.assertEqual(report.id_base("info.cpu.steal.peak"), "info.cpu.steal.peak")
 
 
 class Loading(unittest.TestCase):
@@ -96,7 +105,7 @@ class Loading(unittest.TestCase):
         self.assertEqual(sysbench["max"].name, "sysbench cpu 8t")
 
     def test_8_and_16_vcpu_runs_pair_up(self):
-        keys = lambda run: {(m.row, m.base, m.variant) for m in run.metrics if m.row in ("7", "8", "11", "13")}
+        keys = lambda run: {(m.id, m.base, m.variant) for m in run.metrics if m.id.startswith("cpu.")}
         self.assertEqual(keys(fixture("vm-a")), keys(fixture("vm-c")))
 
     def test_median_and_cv_over_rounds(self):

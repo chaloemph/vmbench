@@ -97,9 +97,35 @@ if [ -f "$TMP/out/info.txt" ] && grep -q '^label: ci-label' "$TMP/out/info.txt" 
 else check "info.txt records the label and the vCPU count" 1; fi
 if grep -qP '^info\tmetadata\tOK$' "$TMP/out/status.tsv" 2>/dev/null; then check "status.tsv records the info step" 0
 else check "status.tsv records the info step" 1; fi
-if [ -f "$TMP/out/results.tsv" ] && [ "$(head -1 "$TMP/out/results.tsv")" = $'row\tmetric\tvalue\tunit\tround' ]; then
+if [ -f "$TMP/out/results.tsv" ] && [ "$(head -1 "$TMP/out/results.tsv")" = $'id\tmetric\tvalue\tunit\tround' ]; then
   check "results.tsv has the expected header" 0
 else check "results.tsv has the expected header" 1; fi
+
+# meta.json: written for every run, valid JSON, finished (end_utc set), and free of host name and addresses
+if python3 -I - "$TMP/out/meta.json" "$(hostname)" "$(hostname -s)" <<'PY'
+import json, re, sys
+path, *hosts = sys.argv[1:]
+text = open(path).read()
+m = json.loads(text)
+want = {"schema", "vmbench_version", "cpubench_version", "label", "stages", "quick", "rounds", "start_utc", "end_utc", "arch", "nproc", "ram_gb"}
+assert set(m) == want, sorted(set(m) ^ want)
+assert m["label"] == "ci-label" and m["quick"] is True and m["stages"] == ["info"], m
+assert m["vmbench_version"] and isinstance(m["nproc"], int) and m["nproc"] > 0
+ts = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+assert ts.match(m["start_utc"]) and ts.match(m["end_utc"]) and m["start_utc"] <= m["end_utc"], m
+assert not re.search(r"\b\d{1,3}(\.\d{1,3}){3}\b", text), "IP address in meta.json"
+for h in hosts:
+    if h and h != "ci-label":
+        assert h not in text, "host name in meta.json"
+PY
+then check "meta.json is complete, finished and anonymous" 0
+else check "meta.json is complete, finished and anonymous" 1; fi
+
+# --metrics prints the id table without needing any tool
+sb --metrics
+n=$(grep -cE '^[a-z]+(\.[a-z0-9-]+)+\|' <<<"$OUTPUT")
+if [ "$RC" = 0 ] && [ "$n" -gt 50 ] && [[ $OUTPUT == *"cpu.sysbench.prime.1t|events/s|higher|"* ]]; then check "--metrics prints the metric table" 0
+else check "--metrics prints the metric table" 1 "exit=$RC, lines=$n"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

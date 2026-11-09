@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "vmbench_version": "v0.0.0-fixture",
+  "cpubench_version": null,
+  "label": "new-b",
+  "stages": [
+    "info",
+    "cpu",
+    "mem",
+    "disk",
+    "web",
+    "burnin"
+  ],
+  "quick": false,
+  "rounds": 3,
+  "start_utc": "2000-01-02T00:00:00Z",
+  "end_utc": null,
+  "arch": "aarch64",
+  "nproc": 8,
+  "ram_gb": 16
+}

@@ -20,7 +20,7 @@ vmbench runs a fixed set of well-known tools (sysbench, 7-Zip, OpenSSL, STREAM, 
 
 `info` always runs: it records the kernel, CPU model, flags, NUMA layout, disks, tool versions and CPU steal, because a result without them cannot be interpreted later.
 
-Each result row has a numeric `row` ID. These IDs come from the test plan this tool was written for and will be replaced by readable names.
+Each value in `results.tsv` has a stable ID of the form `<stage>.<tool>.<test>[.<variant>]`, for example `cpu.sysbench.prime.1t` (one thread) or `mem.stream.triad.max` (all vCPUs). The full list, with what each one measures, its tool, unit and whether higher or lower is better, is in [docs/tests.md](docs/tests.md); `bash run-benchmark.sh --metrics` prints the same table. Result folders from older versions, which numbered the rows after a spreadsheet, still load: `report.py` maps those rows to the IDs.
 
 ## Requirements
 
@@ -54,7 +54,7 @@ A full run of `cpu`, `mem` and `disk` took about 1.5 hours on 8 vCPU VMs with an
 ## Options
 
 ```text
-bash run-benchmark.sh [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--help]
+bash run-benchmark.sh [--with LIST | --only LIST] [--peer HOST] [--hours N] [--list] [--metrics] [--help]
 ```
 
 | Option | Meaning |
@@ -64,6 +64,7 @@ bash run-benchmark.sh [--with LIST | --only LIST] [--peer HOST] [--hours N] [--l
 | `--peer HOST` | peer machine for `net`; it must run `iperf3 -s -D` and `sockperf server -i 0.0.0.0 &` |
 | `--hours N` | length of the burn-in (default 48) |
 | `--list` | show stages, typical duration and readiness of this machine |
+| `--metrics` | print the table of metric IDs and exit |
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
@@ -78,6 +79,8 @@ Settings are environment variables: `LABEL` (name of the machine in the results)
 With `RAW_DEV=/dev/sdX CONFIRM_WIPE=yes` the `disk` and `burnin` stages write to the whole device and **erase it**. They refuse a device that has a filesystem, a mount point or partitions. Without `RAW_DEV` they use files on the normal filesystem.
 
 ## Reports
+
+Every run also writes `meta.json` (vmbench and cpubench version, label, stages, `QUICK`, start and end time in UTC, architecture, vCPU count; no host name or address). `report.py` reads it, and falls back to `info.txt` for runs that have none. A `meta.json` whose `end_utc` is `null` belongs to a run that did not finish.
 
 Every run ends by printing tables and writing `report.md` and `report.html` into the result folder. You can also run the report on its own:
 
@@ -105,7 +108,7 @@ Marks and warnings you will see:
 
 ## Privacy
 
-The result folder contains `info.txt`, which lists the host name, IP addresses, disks and the busiest processes. `.gitignore` excludes result folders, but do not attach or publish raw result folders without reading them first. The generated reports contain no IP addresses, but they show the `LABEL` you gave the machine (the default is its short host name), so choose a neutral label before sharing a report.
+The result folder contains `info.txt`, which lists the host name, IP addresses, disks and the busiest processes. `.gitignore` excludes result folders, but do not attach or publish raw result folders without reading them first. The generated reports contain no IP addresses, but they show the `LABEL` you gave the machine (the default is its short host name), so choose a neutral label before sharing a report. `meta.json` holds no host name or address, only the `LABEL`.
 
 ## Files
 
@@ -113,6 +116,7 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 |---|---|
 | `run-benchmark.sh` | runs the stages and records the results |
 | `report.py` | tables and comparisons (standard library only) |
+| `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage |
 | `setup-cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
 | `setup-postgres-bench.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
 
@@ -122,7 +126,7 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 bash tests/run.sh
 ```
 
-runs the Python tests for `report.py` and the command line tests for `run-benchmark.sh`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
+runs the Python tests for `report.py` and the metric IDs (the table in `run-benchmark.sh`, `docs/tests.md` and the old-format mapping must agree) and the command line tests for `run-benchmark.sh`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
 
 CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n`, ShellCheck (warnings and errors) and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
 
