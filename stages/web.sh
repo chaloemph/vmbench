@@ -7,7 +7,7 @@
 stage_web_order() { echo 60; }
 stage_web_default() { echo no; }
 stage_web_rounds() { echo "$WEB_ROUNDS"; }
-stage_web_time() { rounds_time 5 "${WEB_ROUNDS:-3}"; }   # about 5 min per round
+stage_web_time() { rounds_time 6 "${WEB_ROUNDS:-3}"; }   # about 6 min per round (measured: 5.5 to 7)
 stage_web_note() { echo ""; }
 
 stage_web_check() {

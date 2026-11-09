@@ -55,8 +55,8 @@ list_time() { # stage, env...: the TIME column of one stage
 t=$(list_time cpu);  [ "$t" = "14 min" ] && check "list: cpu 3 rounds is 14 min (as before)" 0 || check "list: cpu 3 rounds is 14 min (as before)" 1 "got '$t'"
 t=$(list_time mem);  [ "$t" = "3 min" ]  && check "list: mem 3 rounds is 3 min" 0 || check "list: mem 3 rounds is 3 min" 1 "got '$t'"
 t=$(list_time mem MEM_ROUNDS=5); [ "$t" = "5 min" ] && check "list: MEM_ROUNDS=5 is 5 min" 0 || check "list: MEM_ROUNDS=5 is 5 min" 1 "got '$t'"
-t=$(list_time web);  [ "$t" = "15 min" ] && check "list: web 3 rounds is 15 min" 0 || check "list: web 3 rounds is 15 min" 1 "got '$t'"
-t=$(list_time web ROUNDS=1); [ "$t" = "5 min" ] && check "list: ROUNDS=1 makes web 5 min" 0 || check "list: ROUNDS=1 makes web 5 min" 1 "got '$t'"
+t=$(list_time web);  [ "$t" = "18 min" ] && check "list: web 3 rounds is 18 min" 0 || check "list: web 3 rounds is 18 min" 1 "got '$t'"
+t=$(list_time web ROUNDS=1); [ "$t" = "6 min" ] && check "list: ROUNDS=1 makes web 6 min" 0 || check "list: ROUNDS=1 makes web 6 min" 1 "got '$t'"
 t=$(list_time disk); [ "$t" = "71 min" ] && check "list: disk default (1 round) is 71 min" 0 || check "list: disk default (1 round) is 71 min" 1 "got '$t'"
 t=$(list_time disk DISK_ROUNDS=3); [ "$t" = "111 min" ] && check "list: DISK_ROUNDS=3 is 71 + 2 x 20 = 111 min" 0 || check "list: DISK_ROUNDS=3 is 71 + 2 x 20 = 111 min" 1 "got '$t'"
 OUTPUT=$(HOME=$TMP/home CB=$TMP/x bash "$ROOT/vmbench" run --rounds 2 --disk-rounds 4 --list 2>&1)

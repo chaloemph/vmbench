@@ -133,9 +133,9 @@ Every stage that repeats writes one row per value per round into `results.tsv` (
 
 | Stage | Default | Set with | What one round is |
 |---|---|---|---|
-| `cpu` | 3 | `--rounds N`, `ROUNDS` | every cpu test (about 5 min) |
+| `cpu` | 3 | `--rounds N`, `ROUNDS` | every cpu test (about 6 min) |
 | `mem` | 3 | `--rounds N`, `MEM_ROUNDS` | STREAM and `lat_mem_rd` once (about 1 min; `stream.c` is compiled once) |
-| `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 5 min) |
+| `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 6 min) |
 | `disk` | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1 is the whole sequence; rounds 2 to N repeat only the 4 KiB random-read latency (p99, p99.9), random read, 70/30 mix and the WAL `fdatasync` test (about 20 min each) |
 
 `ROUNDS` is the default of `mem` and `web` as well; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage, and `--rounds N` overrides all three. `QUICK=1` runs one round unless you ask for more. A value must be a whole number of 1 or more; anything else exits with code 2 before anything runs. `meta.json` records the count of each stage (`rounds_by_stage`).
