@@ -1,0 +1,13 @@
+date: 2000-01-01T00:00:00+00:00
+label: vm-a
+host: fixture-vm-a
+kernel: Linux 6.8.0 x86_64
+os: Ubuntu 24.04 LTS
+virt: kvm
+nproc: 8  ram_gb: 16
+quick: 0  rounds: 3  fio_size: 8G  raw_dev: none
+--- lscpu
+Model name:  Fixture CPU A
+Vendor ID:  Fixture
+--- tools
+cpubench: cpubench v0.1.0 · aaaaaaaaaaaa · go1.26.3 · GOAMD64=v1

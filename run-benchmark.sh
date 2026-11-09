@@ -472,7 +472,7 @@ stage_web() {
   else
     [ -x "$CB/web-loopback.sh" ] || { bad web all "$CB/web-loopback.sh missing"; return; }
     ( cd "$CB" && MACHINE="$LABEL" ./web-loopback.sh "$LABEL-web" > "$OUT/web.log" 2>&1 )
-    cp "$CB"/results/web/"$LABEL-web"-* "$OUT/" 2>/dev/null
+    cp "$CB/results/web/$LABEL-web"-* "$OUT/" 2>/dev/null
   fi
   local f k
   for f in "$OUT/web.json" "$OUT/$LABEL-web-mix.json"; do
