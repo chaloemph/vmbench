@@ -205,22 +205,22 @@ class Warnings(unittest.TestCase):
 
     def test_mismatched_setups_are_flagged(self):
         text = self.texts("vm-a", "vm-c")
-        for word in ("vCPU", "RAM", "cpubench", "จำนวนรอบ"):
+        for word in ("vCPU", "RAM", "cpubench", "rounds"):
             self.assertIn(word, text)
 
     def test_matching_setups_are_not_flagged(self):
         text = "\n".join(report.compare_warnings([fixture("vm-a"), fixture("vm-b")]))
-        for word in ("vCPU", "RAM", "cpubench คนละเวอร์ชัน"):
+        for word in ("vCPU", "RAM", "cpubench versions differ"):
             self.assertNotIn(word, text)
 
     def test_cpubench_build_tag_alone_is_not_a_version_difference(self):
         a, b = fixture("vm-a"), fixture("vm-b")
         b.info["cpubench"] = a.info["cpubench"].replace("GOAMD64=v1", "GOARM64=v8.0")
-        self.assertNotIn("คนละเวอร์ชัน", "\n".join(report.compare_warnings([a, b])))
+        self.assertNotIn("versions differ", "\n".join(report.compare_warnings([a, b])))
 
     def test_environment_table_counts_problems_with_reasons(self):
         table = report.env_table([fixture("vm-c")])
-        status = next(r for r in table.rows if r[0] == "สถานะขั้นตอน")
+        status = next(r for r in table.rows if r[0] == "Stage status")
         self.assertIn("FAIL 1", status[1])
         self.assertIn("SKIP 1", status[1])
 

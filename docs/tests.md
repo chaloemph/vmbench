@@ -99,6 +99,20 @@ The table below is the same data as `vmbench run --metrics` (or `bash run-benchm
 | `info.cpu.steal.peak` | Highest CPU steal sample during the run (context, not scored) | mpstat | % | none | info |
 | `info.fio.fill-write-1m` | Speed of the 1 MiB sequential fill before the disk tests (context, not scored) | fio | MB/s | none | info |
 
+## STREAM source
+
+`mem.stream.*` is measured with a pinned copy of the official `stream.c` (jeffhammond/STREAM), defined in `lib/stream.sh`:
+
+- commit `6703f7504a38a8da96b353cadafa64d3c2d7a2d3`
+- sha256 `c388924eb140fda95f534cdb808ae7f1f8ebb18da41d8aec1b512a3c8d303c9b`
+- `https://raw.githubusercontent.com/jeffhammond/STREAM/6703f7504a38a8da96b353cadafa64d3c2d7a2d3/stream.c`
+
+The stage compiles the file only when its sha256 matches (`STREAM_C` for an offline copy is checked too; `STREAM_SKIP_CHECK=1` turns the check off and the run records `UNVERIFIED` in `info.txt`). Results measured with another STREAM source are not comparable, so a change of the pin is a change of the test: treat it like a new ID if the numbers move.
+
+## Report language
+
+`report.py` writes English by default; `--lang th` or `VMBENCH_LANG=th` selects Thai. The text lives in the `MESSAGES` catalog in `report.py` (one dict per language, same keys and same `{placeholders}`; `tests/test_lang.py` checks both and that no Thai appears in English output). Metric names, IDs and units are not translated. To add a sentence, add the key to both dicts and use `t("key", name=value)`.
+
 ## Old result folders
 
 Result folders written before the IDs existed have a `results.tsv` with the header `row`, `metric`, `value`, `unit`, `round`, where `row` is a number from the original spreadsheet test plan. `report.py` still reads them and maps each row to the ID above through the `LEGACY` table in `report.py`. Rows it does not know are shown under `<stage>.row<N>.<text>`.
@@ -117,12 +131,14 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 
 ## What the tests cover
 
-`bash tests/run.sh` runs five groups, none of which needs a benchmark tool or the network:
+`bash tests/run.sh` runs six groups, none of which needs a benchmark tool or the network:
 
 - `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings
+- `tests/test_lang.py`: the English and Thai message catalogs, `--lang`, `VMBENCH_LANG`, no Thai in English output
 - `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`
 - `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`
 - `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks
 - `tests/test_stages.sh`: every file in `stages/` is sourced and defines the required functions; a new stage file is picked up with no other change
+- `tests/test_stream.sh`: the STREAM pin: right and wrong sha256 for `STREAM_C`, a downloaded file and the cache (file:// URLs, a synthetic `stream.c`), `STREAM_SKIP_CHECK`, the mem stage with a stub
 
 CI also runs `bash -n` and `shellcheck -x -S warning` on `vmbench`, the wrappers, `lib/`, `stages/`, `setup/` and `tests/`.

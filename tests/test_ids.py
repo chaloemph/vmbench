@@ -241,7 +241,7 @@ class OldAndNewFormat(unittest.TestCase):
         cells = [r for t in tables for r in t.rows]
         sysbench = [r for r in cells if r[0] == "cpu.sysbench.prime"]
         self.assertEqual(len(sysbench), 2)
-        self.assertNotIn("ไม่มีข้อมูล", [report.cell_text(c) for r in sysbench for c in r])
+        self.assertNotIn("no data", [report.cell_text(c) for r in sysbench for c in r])
 
     def test_tables_use_ids_not_row_numbers(self):
         for name in ("vm-a", "new-a"):
@@ -315,14 +315,14 @@ class Meta(unittest.TestCase):
         table = report.env_table([report.Run(os.path.join(FIX, "new-a")), report.Run(os.path.join(FIX, "vm-a"))])
         rows = {r[0]: r[1:] for r in table.rows}
         self.assertEqual(rows["vmbench"], ["v0.0.0-fixture", "-"])
-        self.assertEqual(rows["ขั้นตอนที่รัน"][0], "cpu mem disk web")
+        self.assertEqual(rows["Stages run"][0], "cpu mem disk web")
 
     def test_different_vmbench_versions_are_flagged_only_when_both_are_known(self):
         a, b = report.Run(os.path.join(FIX, "new-a")), report.Run(os.path.join(FIX, "new-b"))
-        self.assertNotIn("vmbench คนละเวอร์ชัน", "\n".join(report.compare_warnings([a, b])))
+        self.assertNotIn("vmbench versions differ", "\n".join(report.compare_warnings([a, b])))
         b.meta["vmbench_version"] = "v9"
-        self.assertIn("vmbench คนละเวอร์ชัน", "\n".join(report.compare_warnings([a, b])))
-        self.assertNotIn("vmbench คนละเวอร์ชัน", "\n".join(report.compare_warnings([a, report.Run(os.path.join(FIX, "vm-a"))])))
+        self.assertIn("vmbench versions differ", "\n".join(report.compare_warnings([a, b])))
+        self.assertNotIn("vmbench versions differ", "\n".join(report.compare_warnings([a, report.Run(os.path.join(FIX, "vm-a"))])))
 
     def test_fixture_meta_has_no_addresses(self):
         for name in ("new-a", "new-b"):

@@ -7,7 +7,8 @@
 Every command prints the tables to stdout and writes report.md + report.html:
   show     into the results folder (or --out DIR)
   compare  into ./compare-<a>-vs-<b>/ (or --out DIR)
-Use --no-files for stdout only. Standard library only, Python 3.8+.
+Use --no-files for stdout only. The text is English; --lang th (or VMBENCH_LANG=th) gives Thai.
+Standard library only, Python 3.8+.
 
 Values are recomputed from results.tsv (median and CV over the rounds). Every value has a stable id such
 as cpu.sysbench.prime.1t (see docs/tests.md). Result folders from before the ids (results.tsv header
@@ -33,7 +34,7 @@ HIGH_CV = 5.0       # % - mark a metric as noisy from here on
 MIN_DIFF = 1.0      # % - smaller differences are never called a win
 HIGH_STEAL = 1.0    # % - average CPU steal worth warning about
 
-INFO_SECTION = "ข้อมูลประกอบ"
+INFO_SECTION = "info"   # key of the context section; its title comes from the catalog (section.info)
 # the first part of an id is its stage; this is also the order of the sections in the tables
 STAGE_SECTIONS = collections.OrderedDict([("cpu", "CPU"), ("mem", "Memory"), ("disk", "Disk"), ("pg", "PostgreSQL"),
                                           ("net", "Network"), ("web", "Web"), ("burnin", "Burn-in"),
@@ -137,9 +138,143 @@ def id_key(ident):
 class InputError(Exception):
     pass
 
+# ---- messages ----
+# Every user-visible sentence of the reports lives here, one dict per language, with the same keys and the same
+# {placeholders} in both (tests/test_report.py checks that). Use t("key", name=value). Metric names, units, ids
+# and tool output are not translated.
+MESSAGES = {
+    "en": {
+        "lang.html": "en",
+        "section.info": "Context",
+        "yes": "yes",
+        "no": "no",
+        "title.show": "Benchmark results: {label}",
+        "title.compare": "Comparison: {labels}",
+        "title.compare.join": " vs ",
+        "env.title": "Environment",
+        "env.item": "Item",
+        "env.date": "Run date",
+        "env.stages": "Stages run",
+        "env.arch": "Architecture",
+        "env.rounds": "Rounds / quick",
+        "env.fio": "fio file / raw device",
+        "env.stage_status": "Stage status",
+        "env.steal": "avg {avg}% / max {peak}%",
+        "env.no_problems": "no FAIL/SKIP",
+        "col.test": "Test",
+        "col.unit": "Unit",
+        "col.value": "Value",
+        "col.rounds": "Rounds",
+        "col.diff": "Diff",
+        "col.verdict": "Verdict",
+        "col.verdict_run": "Verdict {label}",
+        "verdict.none": "no data",
+        "verdict.same": "not clearly different",
+        "verdict.better_named": "{label} better{once}",
+        "verdict.better": "better{once}",
+        "verdict.worse": "worse{once}",
+        "summary.title": "Tally per section (against the baseline)",
+        "summary.section": "Section",
+        "summary.compared": "Compared",
+        "summary.better": "better than baseline",
+        "summary.worse": "baseline better",
+        "summary.same": "not clearly different",
+        "legend": "* measured once, so its variation is unknown    ! CV of {cv}% or more    CV n/a = measured once",
+        "compare.note": "\"not clearly different\" = the difference is within the larger CV of the two sides, or within {min}%    "
+                        "Diff = (that machine - baseline) / baseline    Counts are numbers of tests, not weighted",
+        "warnings": "Warnings",
+        "warn.quick": "{label}: QUICK run, only good for checking that the script works. Do not use these numbers",
+        "warn.steal": "{label}: average CPU steal {avg}% (max {peak}%), the host has other load, so results may be lower than the real capacity",
+        "warn.noisy": "{label}: {count} value(s) vary by more than {cv}%: {names}",
+        "warn.once": "{label}: {count} value(s) measured once (stages {stages}), so their variation is unknown",
+        "warn.steady": "{label}: {id} did not reach steady state, the IOPS value may not have settled",
+        "warn.differs": "{name} differs: {values}",
+        "cmp.rounds": "rounds",
+        "cmp.fio_size": "fio file size",
+        "warn.cpubench": "cpubench versions differ, so the cpubench results cannot be compared directly: {values}",
+        "warn.vmbench": "vmbench versions differ: {values}",
+        "warn.arch": "different architectures: sysbench cpu counts prime numbers and depends heavily on the compiler, "
+                     "so do not judge CPU speed by it alone",
+        "warn.disk": "Disk: measured on a file on the OS disk, so the numbers may include host cache and hypervisor settings. "
+                     "Check the cache mode before concluding which storage is better",
+    },
+    "th": {
+        "lang.html": "th",
+        "section.info": "ข้อมูลประกอบ",
+        "yes": "ใช่",
+        "no": "ไม่",
+        "title.show": "ผลการทดสอบ: {label}",
+        "title.compare": "เปรียบเทียบผล: {labels}",
+        "title.compare.join": " กับ ",
+        "env.title": "สภาพแวดล้อม",
+        "env.item": "รายการ",
+        "env.date": "วันที่รัน",
+        "env.stages": "ขั้นตอนที่รัน",
+        "env.arch": "สถาปัตยกรรม",
+        "env.rounds": "จำนวนรอบ / quick",
+        "env.fio": "ไฟล์ fio / raw device",
+        "env.stage_status": "สถานะขั้นตอน",
+        "env.steal": "เฉลี่ย {avg}% / สูงสุด {peak}%",
+        "env.no_problems": "ไม่มี FAIL/SKIP",
+        "col.test": "ทดสอบ",
+        "col.unit": "หน่วย",
+        "col.value": "ค่า",
+        "col.rounds": "รอบ",
+        "col.diff": "ต่าง",
+        "col.verdict": "ผล",
+        "col.verdict_run": "ผล {label}",
+        "verdict.none": "ไม่มีข้อมูล",
+        "verdict.same": "ไม่ต่างชัดเจน",
+        "verdict.better_named": "{label} ดีกว่า{once}",
+        "verdict.better": "ดีกว่า{once}",
+        "verdict.worse": "แย่กว่า{once}",
+        "summary.title": "นับผลตามหมวด (เทียบกับ baseline)",
+        "summary.section": "หมวด",
+        "summary.compared": "เทียบ",
+        "summary.better": "ดีกว่า baseline",
+        "summary.worse": "baseline ดีกว่า",
+        "summary.same": "ไม่ต่างชัดเจน",
+        "legend": "* วัดรอบเดียว ยังไม่รู้ว่าแกว่งแค่ไหน    ! CV ตั้งแต่ {cv}% ขึ้นไป    CV n/a = วัดรอบเดียว",
+        "compare.note": "\"ไม่ต่างชัดเจน\" = ผลต่างไม่เกินค่า CV ที่มากกว่าของสองฝั่ง หรือไม่เกิน {min}%    "
+                        "ต่าง = (เครื่องนั้น − baseline) / baseline    ค่าที่นับเป็นจำนวนการทดสอบ ไม่ได้ถ่วงน้ำหนัก",
+        "warnings": "ข้อควรระวัง",
+        "warn.quick": "{label}: รันแบบ QUICK ใช้ได้แค่ตรวจว่าสคริปต์ทำงาน ห้ามใช้ตัวเลขนี้",
+        "warn.steal": "{label}: CPU steal เฉลี่ย {avg}% (สูงสุด {peak}%) host มีโหลดอื่น ผลอาจต่ำกว่าความจริง",
+        "warn.noisy": "{label}: ค่าแกว่งเกิน {cv}% ({count} ค่า): {names}",
+        "warn.once": "{label}: วัดรอบเดียว {count} ค่า (ขั้นตอน {stages}) ยังไม่รู้ว่าแกว่งแค่ไหน",
+        "warn.steady": "{label}: {id} ยังไม่ถึง steady state ค่า IOPS อาจยังไม่นิ่ง",
+        "warn.differs": "{name} ไม่เท่ากัน: {values}",
+        "cmp.rounds": "จำนวนรอบ",
+        "cmp.fio_size": "ขนาดไฟล์ fio",
+        "warn.cpubench": "cpubench คนละเวอร์ชัน ผลกลุ่ม cpubench เทียบกันไม่ได้ตรง ๆ: {values}",
+        "warn.vmbench": "vmbench คนละเวอร์ชัน: {values}",
+        "warn.arch": "คนละสถาปัตยกรรม: sysbench cpu คำนวณจำนวนเฉพาะ ผลขึ้นกับ compiler มาก "
+                     "อย่าใช้ตัวเดียวสรุปความแรงของ CPU",
+        "warn.disk": "Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
+                     "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า",
+    },
+}
+LANGS = tuple(MESSAGES)
+LANG = "en"
+
+
+def set_lang(lang):
+    global LANG
+    if lang not in MESSAGES:
+        raise InputError(f"unknown language '{lang}' (use one of: {', '.join(LANGS)})")
+    LANG = lang
+
+
+def t(key, **kw):
+    return MESSAGES[LANG][key].format(**kw)
+
 
 def section_of(ident):
     return STAGE_SECTIONS.get(ident.split(".")[0], INFO_SECTION)
+
+
+def section_title(section):
+    return t("section.info") if section == INFO_SECTION else section
 
 
 def direction(metric, unit):
@@ -328,7 +463,7 @@ def value(m):
     if m is None:
         return "-"
     if m.unit == "flag":
-        return "ใช่" if m.median else "ไม่"
+        return t("yes") if m.median else t("no")
     return num(m.median) + mark(m)
 
 
@@ -354,53 +489,52 @@ def cell_text(c):
 def env_table(runs):
     def steal(r):
         avg, top = r.steal
-        return "-" if avg is None else f"เฉลี่ย {num(avg)}% / สูงสุด {num(top)}%"
+        return "-" if avg is None else t("env.steal", avg=num(avg), peak=num(top))
 
     def status(r):
         c = collections.Counter(p[2].split(" ", 1)[0] for p in r.problems)
-        return ", ".join(f"{k} {v}" for k, v in sorted(c.items())) or "ไม่มี FAIL/SKIP"
+        return ", ".join(f"{k} {v}" for k, v in sorted(c.items())) or t("env.no_problems")
 
-    fields = [("วันที่รัน", lambda r: r.info.get("date", "-")),
+    fields = [(t("env.date"), lambda r: r.info.get("date", "-")),
               ("vmbench", lambda r: r.version or "-"),
-              ("ขั้นตอนที่รัน", lambda r: " ".join(s for s in r.stages if s != "info") or "-"),
+              (t("env.stages"), lambda r: " ".join(s for s in r.stages if s != "info") or "-"),
               ("CPU", lambda r: r.cpu or "-"),
-              ("สถาปัตยกรรม", lambda r: r.arch or "-"),
+              (t("env.arch"), lambda r: r.arch or "-"),
               ("vCPU / RAM", lambda r: f"{r.info.get('nproc', '-')} / {r.info.get('ram_gb', '-')} GB"),
               ("Kernel", lambda r: r.info.get("kernel", "-")),
               ("OS", lambda r: r.info.get("os", "-")),
               ("Hypervisor", lambda r: r.info.get("virt", "-")),
               ("cpubench", lambda r: r.info.get("cpubench", "-")),
-              ("จำนวนรอบ / quick", lambda r: f"{r.info.get('rounds', '-')} / {r.info.get('quick', '-')}"),
-              ("ไฟล์ fio / raw device", lambda r: f"{r.info.get('fio_size', '-')} / {r.info.get('raw_dev', '-')}"),
+              (t("env.rounds"), lambda r: f"{r.info.get('rounds', '-')} / {r.info.get('quick', '-')}"),
+              (t("env.fio"), lambda r: f"{r.info.get('fio_size', '-')} / {r.info.get('raw_dev', '-')}"),
               ("STREAM N", lambda r: r.stream_n or "-"),
               ("CPU steal", steal),
-              ("สถานะขั้นตอน", status)]
-    return Table("สภาพแวดล้อม", ["รายการ"] + [r.label for r in runs], ["l"] * (len(runs) + 1),
+              (t("env.stage_status"), status)]
+    return Table(t("env.title"), [t("env.item")] + [r.label for r in runs], ["l"] * (len(runs) + 1),
                  [[name] + [fn(r) for r in runs] for name, fn in fields])
 
 
 def run_warnings(run):
     out = []
     if run.info.get("quick", "0") not in ("0", ""):
-        out.append(f"{run.label}: รันแบบ QUICK ใช้ได้แค่ตรวจว่าสคริปต์ทำงาน ห้ามใช้ตัวเลขนี้")
+        out.append(t("warn.quick", label=run.label))
     avg, top = run.steal
     if avg is not None and avg >= HIGH_STEAL:
-        out.append(f"{run.label}: CPU steal เฉลี่ย {num(avg)}% (สูงสุด {num(top)}%) "
-                   "host มีโหลดอื่น ผลอาจต่ำกว่าความจริง")
+        out.append(t("warn.steal", label=run.label, avg=num(avg), peak=num(top)))
     if run.meta_problem:
         out.append(f"{run.label}: {run.meta_problem}")
     for stage, step, result in run.problems:
         out.append(f"{run.label}: {stage} / {step} = {result}")
     noisy = [m.name for m in run.metrics if mark(m) == "!"]
     if noisy:
-        out.append(f"{run.label}: ค่าแกว่งเกิน {HIGH_CV:.0f}% ({len(noisy)} ค่า): " + ", ".join(noisy))
+        out.append(t("warn.noisy", label=run.label, cv=f"{HIGH_CV:.0f}", count=len(noisy), names=", ".join(noisy)))
     once = [m for m in run.metrics if len(m.values) < 2 and not m.id.startswith("info.")]
     if once and any(len(m.values) > 1 for m in run.metrics):
         stages = ", ".join(sorted({m.id.split(".")[0] for m in once}, key=lambda s: id_key(s + ".")))
-        out.append(f"{run.label}: วัดรอบเดียว {len(once)} ค่า (ขั้นตอน {stages}) ยังไม่รู้ว่าแกว่งแค่ไหน")
+        out.append(t("warn.once", label=run.label, count=len(once), stages=stages))
     flag = run.find("steadystate attained (1=yes)")
     if flag and not flag.median:
-        out.append(f"{run.label}: {flag.id} ยังไม่ถึง steady state ค่า IOPS อาจยังไม่นิ่ง")
+        out.append(t("warn.steady", label=run.label, id=flag.id))
     return out
 
 
@@ -410,33 +544,30 @@ def compare_warnings(runs):
     def differs(name, fn):
         vals = [fn(r) for r in runs]
         if len(set(vals)) > 1:
-            out.append(f"{name} ไม่เท่ากัน: " + ", ".join(f"{r.label}={v}" for r, v in zip(runs, vals)))
+            out.append(t("warn.differs", name=name, values=", ".join(f"{r.label}={v}" for r, v in zip(runs, vals))))
 
     # version and commit only: the rest of the line is a per-architecture build tag such as GOAMD64=v1
     versions = [" · ".join(r.info.get("cpubench", "?").split(" · ")[:2]) for r in runs]
     if len(set(versions)) > 1:
-        out.append("cpubench คนละเวอร์ชัน ผลกลุ่ม cpubench เทียบกันไม่ได้ตรง ๆ: "
-                   + ", ".join(f"{r.label}={v}" for r, v in zip(runs, versions)))
+        out.append(t("warn.cpubench", values=", ".join(f"{r.label}={v}" for r, v in zip(runs, versions))))
     known = [r.version for r in runs]
     if all(known) and len(set(known)) > 1:
-        out.append("vmbench คนละเวอร์ชัน: " + ", ".join(f"{r.label}={r.version}" for r in runs))
-    differs("จำนวนรอบ", lambda r: r.info.get("rounds", "?"))
-    differs("ขนาดไฟล์ fio", lambda r: r.info.get("fio_size", "?"))
+        out.append(t("warn.vmbench", values=", ".join(f"{r.label}={r.version}" for r in runs)))
+    differs(t("cmp.rounds"), lambda r: r.info.get("rounds", "?"))
+    differs(t("cmp.fio_size"), lambda r: r.info.get("fio_size", "?"))
     differs("raw device", lambda r: r.info.get("raw_dev", "?"))
     differs("vCPU", lambda r: r.info.get("nproc", "?"))
     differs("RAM (GB)", lambda r: r.info.get("ram_gb", "?"))
     differs("STREAM N", lambda r: r.stream_n or "?")
     if len({r.arch for r in runs}) > 1 and any(r.find("sysbench cpu 1t") for r in runs):
-        out.append("คนละสถาปัตยกรรม: sysbench cpu คำนวณจำนวนเฉพาะ ผลขึ้นกับ compiler มาก "
-                   "อย่าใช้ตัวเดียวสรุปความแรงของ CPU")
+        out.append(t("warn.arch"))
     return out
 
 
 def disk_warning(runs):
     tested = [r for r in runs if any(section_of(m.id) == "Disk" for m in r.metrics)]
     if any(r.info.get("raw_dev", "none") == "none" for r in tested):
-        return ["Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
-                "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า"]
+        return [t("warn.disk")]
     return []
 
 
@@ -467,11 +598,11 @@ def show_tables(run):
                 rows.append(head + [value(m), str(len(m.values)), cv_text(m)])
         if threaded:
             top = f"max ({run.nproc}t)" if run.nproc else "max"
-            headers = ["ID", "ทดสอบ", "หน่วย", "1 thread", top, "รอบ", "CV"]
+            headers = ["ID", t("col.test"), t("col.unit"), "1 thread", top, t("col.rounds"), "CV"]
         else:
-            headers = ["ID", "ทดสอบ", "หน่วย", "ค่า", "รอบ", "CV"]
+            headers = ["ID", t("col.test"), t("col.unit"), t("col.value"), t("col.rounds"), "CV"]
         aligns = ["l", "l", "l"] + ["r"] * (len(headers) - 3)
-        tables.append(Table(section, headers, aligns, rows))
+        tables.append(Table(section_title(section), headers, aligns, rows))
     return tables
 
 
@@ -509,12 +640,12 @@ def compare_tables(runs):
     tally = collections.OrderedDict()
     two = len(runs) == 2
     for section, section_keys in groups.items():
-        headers = ["ID", "ทดสอบ", "หน่วย", base.label + " (baseline)"]
+        headers = ["ID", t("col.test"), t("col.unit"), base.label + " (baseline)"]
         aligns = ["l", "l", "l", "r"]
         for run in runs[1:]:
-            headers += [run.label, "ต่าง"]
+            headers += [run.label, t("col.diff")]
             aligns += ["r", "r"]
-            headers.append("ผล" if two else f"ผล {run.label}")
+            headers.append(t("col.verdict") if two else t("col.verdict_run", label=run.label))
             aligns.append("l")
         rows = []
         for key in section_keys:
@@ -526,43 +657,45 @@ def compare_tables(runs):
                 o = lookup[i].get(key)
                 cells.append(value(o))
                 if b is None or o is None:
-                    cells += ["-", ("ไม่มีข้อมูล", "none")]
+                    cells += ["-", (t("verdict.none"), "none")]
                     continue
                 diff, verdict = judge(b, o)
                 cells.append("-" if diff is None else f"{diff:+.1f}%".replace("-", "−"))
                 if verdict is None:
                     cells.append("-")
                     continue
-                t = tally.setdefault(section, {}).setdefault(run.label, [0, 0, 0])
+                cnt = tally.setdefault(section, {}).setdefault(run.label, [0, 0, 0])
                 once = "*" if len(b.values) < 2 or len(o.values) < 2 else ""
                 if verdict == 0:
-                    t[2] += 1
-                    cells.append(("ไม่ต่างชัดเจน", "same"))
+                    cnt[2] += 1
+                    cells.append((t("verdict.same"), "same"))
                 elif verdict > 0:
-                    t[0] += 1
-                    cells.append((f"{run.label} ดีกว่า{once}" if two else f"ดีกว่า{once}", "better"))
+                    cnt[0] += 1
+                    cells.append((t("verdict.better_named", label=run.label, once=once) if two else t("verdict.better", once=once), "better"))
                 else:
-                    t[1] += 1
-                    cells.append((f"{base.label} ดีกว่า{once}" if two else f"แย่กว่า{once}", "worse"))
+                    cnt[1] += 1
+                    cells.append((t("verdict.better_named", label=base.label, once=once) if two else t("verdict.worse", once=once), "worse"))
             rows.append(cells)
-        tables.append(Table(section, headers, aligns, rows))
+        tables.append(Table(section_title(section), headers, aligns, rows))
 
     summary_rows = []
     for section, per_run in tally.items():
         for label, (better, worse, same) in per_run.items():
-            summary_rows.append([section, label, str(better), str(worse), str(same)])
-    summary = Table("นับผลตามหมวด (เทียบกับ baseline)",
-                    ["หมวด", "เทียบ", "ดีกว่า baseline", "baseline ดีกว่า", "ไม่ต่างชัดเจน"],
+            summary_rows.append([section_title(section), label, str(better), str(worse), str(same)])
+    summary = Table(t("summary.title"),
+                    [t("summary.section"), t("summary.compared"), t("summary.better"), t("summary.worse"), t("summary.same")],
                     ["l", "l", "r", "r", "r"], summary_rows)
     return summary, tables
 
 
 # ---- renderers ----
 
-LEGEND = (f"* วัดรอบเดียว ยังไม่รู้ว่าแกว่งแค่ไหน    ! CV ตั้งแต่ {HIGH_CV:.0f}% ขึ้นไป    "
-          "CV n/a = วัดรอบเดียว")
-COMPARE_NOTE = (f"\"ไม่ต่างชัดเจน\" = ผลต่างไม่เกินค่า CV ที่มากกว่าของสองฝั่ง หรือไม่เกิน {MIN_DIFF:.0f}%    "
-                "ต่าง = (เครื่องนั้น − baseline) / baseline    ค่าที่นับเป็นจำนวนการทดสอบ ไม่ได้ถ่วงน้ำหนัก")
+def legend():
+    return t("legend", cv=f"{HIGH_CV:.0f}")
+
+
+def compare_note():
+    return t("compare.note", min=f"{MIN_DIFF:.0f}")
 
 
 def width(s):
@@ -596,7 +729,7 @@ def render_text(title, env, main, warnings, summary, notes):
         parts.append("\n" + text_table(summary))
     parts += [""] + notes
     if warnings:
-        parts += ["", "== ข้อควรระวัง =="] + ["- " + w for w in warnings]
+        parts += ["", f"== {t('warnings')} =="] + ["- " + w for w in warnings]
     return "\n".join(parts) + "\n"
 
 
@@ -615,7 +748,7 @@ def md_table(t):
 def render_md(title, env, main, warnings, summary, notes):
     parts = [f"# {title}"]
     if warnings:
-        parts.append("## ข้อควรระวัง\n\n" + "\n".join("- " + w.replace("*", "\\*") for w in warnings))
+        parts.append(f"## {t('warnings')}\n\n" + "\n".join("- " + w.replace("*", "\\*") for w in warnings))
     if summary and summary.rows:
         parts.append(md_table(summary))
     parts += [md_table(t) for t in main]
@@ -672,13 +805,13 @@ def render_html(title, env, main, warnings, summary, notes):
     body = [f"<h1>{html.escape(title)}</h1>"]
     if warnings:
         items = "".join(f"<li>{html.escape(w)}</li>" for w in warnings)
-        body.append(f'<div class="warn"><h2>ข้อควรระวัง</h2><ul>{items}</ul></div>')
+        body.append(f'<div class="warn"><h2>{html.escape(t("warnings"))}</h2><ul>{items}</ul></div>')
     if summary and summary.rows:
         body.append(html_table(summary))
     body += [html_table(t) for t in main]
     body.append(html_table(env))
     body.append('<div class="notes">' + "".join(f"<p>{html.escape(n)}</p>" for n in notes) + "</div>")
-    return ('<!doctype html><html lang="th"><head><meta charset="utf-8">'
+    return (f'<!doctype html><html lang="{t("lang.html")}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{html.escape(title)}</title><style>{CSS}</style></head><body><main>"
             + "".join(body) + "</main></body></html>\n")
@@ -699,8 +832,8 @@ def emit(args, default_dir, title, env, main, warnings, summary, notes):
 
 def cmd_show(args):
     run = Run(args.dir)
-    emit(args, run.path, f"ผลการทดสอบ: {run.label}", env_table([run]), show_tables(run),
-         disk_warning([run]) + run_warnings(run), None, [LEGEND])
+    emit(args, run.path, t("title.show", label=run.label), env_table([run]), show_tables(run),
+         disk_warning([run]) + run_warnings(run), None, [legend()])
 
 
 def unique_labels(runs):
@@ -724,9 +857,9 @@ def cmd_compare(args):
         warnings += run_warnings(run)
     summary, tables = compare_tables(runs)
     labels = [re.sub(r"[^\w.-]+", "_", r.label) for r in runs]
-    title = "เปรียบเทียบผล: " + " กับ ".join(r.label for r in runs)
+    title = t("title.compare", labels=t("title.compare.join").join(r.label for r in runs))
     emit(args, "compare-" + "-vs-".join(labels), title, env_table(runs), tables, warnings, summary,
-         [LEGEND, COMPARE_NOTE])
+         [legend(), compare_note()])
 
 
 def main():
@@ -736,6 +869,8 @@ def main():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--out", help="folder for report.md and report.html")
     common.add_argument("--no-files", action="store_true", help="stdout only")
+    common.add_argument("--lang", choices=LANGS, default=None,
+                        help="report language (default: $VMBENCH_LANG, else en)")
     p = argparse.ArgumentParser(description="Tables and comparisons from run-benchmark.sh results.")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("show", parents=[common], help="tables for one run")
@@ -748,6 +883,7 @@ def main():
     if args.cmd == "compare" and len(args.dirs) < 2:
         p.error("compare needs at least two results folders")
     try:
+        set_lang(args.lang or os.environ.get("VMBENCH_LANG") or "en")
         args.fn(args)
     except InputError as e:
         print(f"error: {e}", file=sys.stderr)

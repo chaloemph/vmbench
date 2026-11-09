@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs every test: the Python tests for report.py and the metric ids, and the command line tests for
-# run-benchmark.sh, the vmbench entry script and the stage files.
+# Runs every test: the Python tests for report.py (tables, metric ids, languages), and the command line tests for
+# run-benchmark.sh, the vmbench entry script, the stage files and the pinned STREAM source.
 #   bash tests/run.sh
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -16,6 +16,9 @@ bash tests/test_vmbench.sh || status=1
 echo
 echo "== stages"
 bash tests/test_stages.sh || status=1
+echo
+echo "== stream"
+bash tests/test_stream.sh || status=1
 echo
 [ "$status" = 0 ] && echo "ALL TESTS PASSED" || echo "TESTS FAILED"
 exit "$status"
