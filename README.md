@@ -184,7 +184,7 @@ Every run ends by printing tables and writing `report.md` and `report.html` into
 
 Marks and warnings you will see:
 
-- `*` the value was measured once (one round), so its variation is unknown. With the default rounds this is only left on `disk` values; use `--rounds` or `--disk-rounds` to remove it
+- `*` the value was measured once (one round), so its variation is unknown. With the default rounds only `disk` values (1 round) and the CPU steal context values still carry it; `--disk-rounds` removes it from disk
 - `!` the coefficient of variation is 5% or more
 - "not clearly different": the difference is within the larger CV of the two runs, or 1%
 - warnings for different cpubench versions, `QUICK=1`, different test sizes or vCPU counts, high CPU steal, failed stages, and disk results taken from files rather than a raw device
