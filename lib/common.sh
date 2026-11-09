@@ -5,7 +5,7 @@
 # Functions defined here:
 #   die MSG...        print "<prog>: MSG" on stderr and exit 2 (usage and pre-flight errors always exit 2)
 #   need TOOL         true when TOOL is on PATH
-#   vmbench_version   the version string (VERSION file, else git describe, else "unknown")
+#   vmbench_version   the version string (git describe in a checkout, else the VERSION file, else "unknown")
 #   utc_now           current UTC time as 2006-01-02T15:04:05Z
 # Needing a result folder (OUT, set by `vmbench run`):
 #   T FULL QUICK      FULL normally, QUICK when QUICK=1
@@ -17,9 +17,11 @@
 die() { printf '%s: %s\n' "${VMBENCH_PROG:-vmbench}" "$*" >&2; exit 2; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
+# A git checkout reports `git describe` (so a development tree says which commit it is); a release tarball has no
+# .git and reports the VERSION file that scripts/build-release.sh stamped with the tag.
 vmbench_version() {
-  if [ -s "$VMBENCH_HOME/VERSION" ]; then head -1 "$VMBENCH_HOME/VERSION"
-  elif need git && git -C "$VMBENCH_HOME" describe --tags --always --dirty 2>/dev/null; then :
+  if [ -e "$VMBENCH_HOME/.git" ] && need git && git -C "$VMBENCH_HOME" describe --tags --always --dirty 2>/dev/null; then :
+  elif [ -s "$VMBENCH_HOME/VERSION" ]; then head -1 "$VMBENCH_HOME/VERSION"
   else echo unknown; fi
 }
 utc_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
