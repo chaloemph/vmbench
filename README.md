@@ -4,7 +4,7 @@ One-command VM performance benchmark for CPU, memory, disk, PostgreSQL, network 
 
 vmbench runs a fixed set of well-known tools (sysbench, 7-Zip, OpenSSL, STREAM, lmbench, fio, pgbench, iperf3, sockperf, stressapptest and [cpubench](https://github.com/chaloemph/cpubench)) inside a Linux VM, records every value, and turns the results into tables. It can also compare two or more runs and say which side is better, without calling a difference a win when it is smaller than the run-to-run noise.
 
-> **Status: early version.** It has been run end to end for the `cpu`, `mem`, `disk` and `web` stages on Ubuntu 24.04 KVM guests (x86_64 and aarch64). The `pg`, `net` and `burnin` stages passed their pre-flight checks but have not yet been run to completion on real machines. Reports are in English; `--lang th` gives the Thai text of earlier versions. There is no release yet, so use a clone of this repository.
+> **Status: early version.** It has been run end to end for the `cpu`, `mem`, `disk` and `web` stages on Ubuntu 24.04 KVM guests (x86_64 and aarch64). The `pg`, `net` and `burnin` stages passed their pre-flight checks but have not yet been run to completion on real machines. Reports are in English; `--lang th` gives the Thai text of earlier versions. There is no release yet: until the first one is published the one-line installer below stops with a message, and a clone of this repository is the way to run it.
 
 ## What it measures
 
@@ -32,7 +32,52 @@ sudo apt-get install -y sysbench fio 7zip iperf3 sockperf stressapptest lmbench 
 
 The `mem` stage compiles STREAM from a pinned source file, see [STREAM source](#stream-source). Running the benchmark itself needs no `sudo`. The test files are created under `~/bench-data` (8 GB for `disk`, so keep at least 15 GB free).
 
-## Quick start
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chaloemph/vmbench/main/get.sh | sh
+```
+
+This downloads the newest release tarball and its `SHA256SUMS`, checks the sha256 (a mismatch stops it before anything is extracted), and installs into your home folder: `~/.local/share/vmbench/<version>`, a `current` link to it, and `~/.local/bin/vmbench`. It never uses `sudo` and refuses to run as root; it does not install packages (it prints the `apt-get` line for the benchmark tools, see [Requirements](#requirements)). If no release exists yet it says so and installs nothing. It does not fall back to the moving `main` branch.
+
+**Pin a version** (use the same one on every machine you compare):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chaloemph/vmbench/main/get.sh | VMBENCH_VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/chaloemph/vmbench/main/get.sh | sh -s -- --version v0.1.0
+```
+
+**Read the script first**, it is short, instead of piping it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/chaloemph/vmbench/main/get.sh
+less get.sh
+sh get.sh --dry-run          # prints every step, changes nothing
+sh get.sh
+```
+
+**Verify a release by hand**, without get.sh:
+
+```bash
+v=v0.1.0
+base=https://github.com/chaloemph/vmbench/releases/download/$v
+curl -fsSLO "$base/vmbench-$v.tar.gz" -O "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS      # must say: vmbench-v0.1.0.tar.gz: OK
+tar -xzf "vmbench-$v.tar.gz" && ./vmbench-$v/vmbench version
+```
+
+**Options:** `--version V`, `--prefix DIR` (or `VMBENCH_HOME`), `--dir DIR`, `--bin-dir DIR`, `--dry-run`, `--uninstall`, `--allow-root`, `--help`; `sh get.sh --help` explains each. The release tarball holds the program and its docs, not `tests/` or `.github/`.
+
+**Uninstall:**
+
+```bash
+sh get.sh --uninstall                       # removes ~/.local/share/vmbench and the ~/.local/bin/vmbench link
+sh get.sh --uninstall --version v0.1.0      # only that version
+```
+
+(or `curl -fsSL .../get.sh | sh -s -- --uninstall`). Result folders under `~/bench-results` are never touched. If `~/.local/bin` is not in your `PATH`, get.sh tells you what to add. Maintainers: [docs/releasing.md](docs/releasing.md).
+
+## Quick start (from a clone, for development)
 
 ```bash
 git clone https://github.com/chaloemph/vmbench.git
@@ -144,6 +189,10 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 | `lib/stream.sh` | the pinned STREAM source: URL, sha256, download and check |
 | `report.py` | tables and comparisons, English and Thai message catalogs (standard library only) |
 | `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage; how to add a stage |
+| `get.sh` | the installer behind the one-line `curl ... \| sh` (POSIX sh, sha256-verified release download, no sudo) |
+| `scripts/build-release.sh` | builds the reproducible release tarball and `SHA256SUMS` (used by the release workflow) |
+| `VERSION` | `0.0.0-dev` in the repository; the release build stamps the tag into it. A git checkout still reports `git describe` |
+| `docs/releasing.md` | how to cut, verify and withdraw a release |
 | `setup/cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
 | `setup/postgres.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
 | `setup-cpubench.sh`, `setup-postgres-bench.sh` | wrappers for the two setup scripts at their old paths |
@@ -154,9 +203,9 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 bash tests/run.sh
 ```
 
-runs the Python tests for `report.py` (including that the English and Thai message catalogs have the same keys and placeholders, and that no Thai appears in English output) and the metric IDs (the table in `lib/metrics.sh`, `docs/tests.md` and the old-format mapping must agree), the command line tests for `vmbench` and `run-benchmark.sh`, a test that every file in `stages/` defines the required functions, and tests of the STREAM pin with a synthetic `stream.c`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
+runs the Python tests for `report.py` (including that the English and Thai message catalogs have the same keys and placeholders, and that no Thai appears in English output) and the metric IDs (the table in `lib/metrics.sh`, `docs/tests.md` and the old-format mapping must agree), the command line tests for `vmbench` and `run-benchmark.sh`, a test that every file in `stages/` defines the required functions, tests of the STREAM pin with a synthetic `stream.c`, the `get.sh` installer against a fake release on `127.0.0.1` (checksum mismatch, unsafe tar paths, dry run, uninstall, a truncated script), and the release tarball build (reproducible bytes, contents, install with `get.sh`). They need no benchmark tools, no network and no `sudo`. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
 
-CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n` and ShellCheck (`-x`, warnings and errors) on every shell file including `lib/` and `stages/`, and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
+CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n` and ShellCheck (`-x`, warnings and errors) on every shell file including `lib/` and `stages/`, `shellcheck -s sh` and `dash -n` on `get.sh`, a job that builds the release tarball and installs it with `get.sh` locally (nothing is published), and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
 
 ## License
 

@@ -27,17 +27,21 @@ jobs:
 
       - name: Bash syntax
         run: |
-          for f in vmbench ./*.sh lib/*.sh stages/*.sh setup/*.sh tests/*.sh; do bash -n "$f" && echo "ok  $f"; done
+          for f in vmbench ./*.sh lib/*.sh stages/*.sh setup/*.sh scripts/*.sh tests/*.sh; do bash -n "$f" && echo "ok  $f"; done
+          # get.sh is POSIX sh and is piped into `sh` (dash on Ubuntu): check it with dash when there is one
+          if command -v dash >/dev/null; then dash -n get.sh && echo "ok  get.sh (dash)"; fi
 
       - name: ShellCheck (warnings and errors)
         run: |
           command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck
           shellcheck --version | sed -n 2p
-          shellcheck -x -S warning vmbench ./*.sh lib/*.sh stages/*.sh setup/*.sh tests/*.sh
+          shellcheck -x -S warning vmbench lib/*.sh stages/*.sh setup/*.sh scripts/*.sh tests/*.sh \
+            run-benchmark.sh setup-cpubench.sh setup-postgres-bench.sh
+          shellcheck -s sh -S warning get.sh
 
       - name: Python syntax
         run: |
-          python3 -I -B -c "import ast, sys; [ast.parse(open(f, encoding='utf-8').read(), f) for f in sys.argv[1:]]; print('ok ', *sys.argv[1:])" report.py tests/test_report.py tests/test_ids.py tests/test_lang.py
+          python3 -I -B -c "import ast, sys; [ast.parse(open(f, encoding='utf-8').read(), f) for f in sys.argv[1:]]; print('ok ', *sys.argv[1:])" report.py tests/fakeserver.py tests/test_report.py tests/test_ids.py tests/test_lang.py
 
       - name: Secret scan (gitleaks, full history)
         run: |
@@ -70,3 +74,21 @@ jobs:
 
       - name: Tests
         run: bash tests/run.sh
+
+  release-build:
+    name: release tarball and get.sh
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the release tarball twice, compare
+        run: |
+          set -euo pipefail
+          bash scripts/build-release.sh v0.0.0-ci --out "$RUNNER_TEMP/a"
+          bash scripts/build-release.sh v0.0.0-ci --out "$RUNNER_TEMP/b" > /dev/null
+          cmp "$RUNNER_TEMP/a/vmbench-v0.0.0-ci.tar.gz" "$RUNNER_TEMP/b/vmbench-v0.0.0-ci.tar.gz"
+          tar -tzf "$RUNNER_TEMP/a/vmbench-v0.0.0-ci.tar.gz" | head -50
+
+      - name: Install it with get.sh from a local server (nothing is published)
+        run: bash tests/test_release.sh && bash tests/test_get.sh
