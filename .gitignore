@@ -27,3 +27,6 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# synthetic test data (made up, no real measurements)
+!tests/fixtures/**

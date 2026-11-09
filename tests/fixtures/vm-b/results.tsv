@@ -1,0 +1,29 @@
+row	metric	value	unit	round
+7	sysbench cpu 1t	1500.93	events/s	1
+8	sysbench cpu 8t	10791.07	events/s	1
+11	openssl aes-256-gcm 1t	7528.58	MB/s	1
+11	openssl aes-256-gcm 8t	53804.12	MB/s	1
+13	cpubench crypto/rsa2048-sign 1t	1203.44	ops/s	1
+13	cpubench crypto/rsa2048-sign 8t	6912.0	ops/s	1
+7	sysbench cpu 1t	1495.73	events/s	2
+8	sysbench cpu 8t	10766.98	events/s	2
+11	openssl aes-256-gcm 1t	7488.51	MB/s	2
+11	openssl aes-256-gcm 8t	54136.57	MB/s	2
+13	cpubench crypto/rsa2048-sign 1t	1196.93	ops/s	2
+13	cpubench crypto/rsa2048-sign 8t	8640.0	ops/s	2
+7	sysbench cpu 1t	1501.67	events/s	3
+8	sysbench cpu 8t	10788.98	events/s	3
+11	openssl aes-256-gcm 1t	7502.86	MB/s	3
+11	openssl aes-256-gcm 8t	53811.12	MB/s	3
+13	cpubench crypto/rsa2048-sign 1t	1195.77	ops/s	3
+13	cpubench crypto/rsa2048-sign 8t	10368.0	ops/s	3
+26	stream triad	135000.0	MB/s	1
+27	lat_mem_rd -t 2048MB	100.0	ns	1
+35	fio randread 4k qd32x4	180000.0	IOPS	1
+34	fio randread 4k qd1 p99	160.0	us	1
+44	wal fdatasync avg	0.4	ms	1
+33	steadystate attained (1=yes)	1	flag	1
+55	cpubench web mix max RPS @ SLO (loopback)	27000.0	RPS	1
+65	burn-in errors (60s)	0	count	1
+info	cpu steal avg	2.5	%	1
+info	cpu steal max	7.5	%	1

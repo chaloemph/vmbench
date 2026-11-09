@@ -116,6 +116,16 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 | `setup-cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
 | `setup-postgres-bench.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
 
+## Development
+
+```bash
+bash tests/run.sh
+```
+
+runs the Python tests for `report.py` and the command line tests for `run-benchmark.sh`. They need no benchmark tools and no network. The test data under `tests/fixtures/` is synthetic (made-up numbers), never a real measurement.
+
+CI (GitHub Actions) runs the same tests on x86_64 and aarch64, plus `bash -n`, ShellCheck (warnings and errors) and a gitleaks secret scan of the whole history. `main` is protected: change it through a pull request.
+
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE).

@@ -1,0 +1,4 @@
+stage	step	result
+cpu	fixture	OK
+web	max RPS	FAIL see web.log
+net	all	SKIP PEER not set
