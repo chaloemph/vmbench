@@ -2,6 +2,8 @@
 
 Every value in `results.tsv` has a stable ID. The ID, not the text of the metric, is what identifies a test: the text can change (it carries the vCPU count or the test size), the ID does not.
 
+This page defines the IDs. What each value means for real work, and how to read a report, is in [reading-results.md](reading-results.md).
+
 ## Naming scheme
 
 ```text
@@ -157,7 +159,7 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 
 - `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings
 - `tests/test_lang.py`: the English and Thai message catalogs, `--lang`, `VMBENCH_LANG`, no Thai in English output
-- `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`
+- `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`, and that `docs/reading-results.md` names every metric ID and no ID that does not exist
 - `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`
 - `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks
 - `tests/test_detach.sh`: `vmbench run --detach` and `vmbench status`, with a fake `tmux` on PATH (no real tmux needed), and with the real one when it is installed

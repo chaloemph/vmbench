@@ -121,6 +121,51 @@ class DocsAgreeWithScript(unittest.TestCase):
         self.assertEqual(found, list(self.script))
 
 
+GUIDE = os.path.join(ROOT, "docs", "reading-results.md")
+ID_TOKEN = re.compile(r"`((?:cpu|mem|disk|pg|net|web|burnin|info)\.[a-z0-9.{},*-]+)`")
+FILE_SUFFIXES = (".txt", ".log", ".err", ".json", ".md", ".sh", ".tsv")
+
+
+def expand_braces(token):
+    """`a.{1t,max}` -> [`a.1t`, `a.max`]; one brace group is enough for the guide."""
+    m = re.search(r"\{([^}]*)\}", token)
+    if not m:
+        return [token]
+    return [token[:m.start()] + part + token[m.end():] for part in m.group(1).split(",")]
+
+
+def guide_tokens():
+    """Backticked tokens in docs/reading-results.md that look like metric IDs (file names excluded)."""
+    with open(GUIDE, encoding="utf-8") as f:
+        text = f.read()
+    return [t for t in ID_TOKEN.findall(text) if not t.endswith(FILE_SUFFIXES)]
+
+
+class ReadingGuide(unittest.TestCase):
+    """docs/reading-results.md explains every metric, and every ID it names is real."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.table = script_table()
+        cls.tokens = guide_tokens()
+
+    def test_every_metric_is_explained(self):
+        exact = {ident for t in self.tokens if "*" not in t for ident in expand_braces(t)}
+        missing = [ident for ident in self.table if ident not in exact]
+        self.assertEqual(missing, [], "metric IDs that docs/reading-results.md does not name exactly")
+
+    def test_every_named_id_exists(self):
+        ids = list(self.table)
+        for token in self.tokens:
+            for name in expand_braces(token):
+                if "*" in name:
+                    pattern = re.compile("^" + re.escape(name).replace(r"\*", ".*") + "$")
+                    ok = any(pattern.match(i) for i in ids)
+                else:   # a whole ID, or the start of some IDs such as cpu.cpubench.int.json
+                    ok = name in self.table or any(i.startswith(name + ".") for i in ids)
+                self.assertTrue(ok, f"docs/reading-results.md names {token!r}, which matches no metric ID")
+
+
 class RecordingCalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
