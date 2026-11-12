@@ -1,5 +1,7 @@
 # Reading the results
 
+**English** · [ภาษาไทย](reading-results.th.md)
+
 This guide explains, for every value vmbench records, what it measures, which direction is better, and what it means for real work on the machine: why the value is worth measuring at all.
 
 It does not give pass/fail thresholds. Whether a number is "enough" depends on your workload, so vmbench is built to **compare** machines (or the same machine before and after a change) run with the same version and settings. The exact definition of each ID (tool, unit, direction) is in [tests.md](tests.md); this page is about interpretation.
