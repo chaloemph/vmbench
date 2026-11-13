@@ -191,6 +191,8 @@ Marks and warnings you will see:
 
 ## Reading the results correctly
 
+[docs/reading-results.md](docs/reading-results.md) ([ภาษาไทย](docs/reading-results.th.md)) explains every value: what it measures, whether higher or lower is better, what it means for real work (web servers, databases, file servers and so on), and which values to look at first for a given workload. Before comparing two machines, keep these in mind:
+
 - **A VM hides the hardware.** There is no view of the BIOS, DIMMs, firmware or power. Disk numbers include the hypervisor's cache and storage settings, so a large gap between two VMs can come from configuration rather than from the disk. Ask for the cache mode before drawing a conclusion.
 - **Watch CPU steal.** `info` records the average and maximum steal during the run. A host that is busy with other VMs makes the result lower than the machine can really do.
 - **Use the same version everywhere.** Compare runs only when they used the same vmbench and cpubench versions.
@@ -212,6 +214,7 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 | `lib/stream.sh` | the pinned STREAM source: URL, sha256, download and check |
 | `report.py` | tables and comparisons, English and Thai message catalogs (standard library only) |
 | `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage; how to add a stage |
+| `docs/reading-results.md` | how to read a report, and what each value means for real work; Thai version in `docs/reading-results.th.md` |
 | `get.sh` | the installer behind the one-line `curl ... \| sh` (POSIX sh, sha256-verified release download, no sudo) |
 | `scripts/build-release.sh` | builds the reproducible release tarball and `SHA256SUMS` (used by the release workflow) |
 | `VERSION` | `0.0.0-dev` in the repository; the release build stamps the tag into it. A git checkout still reports `git describe` |

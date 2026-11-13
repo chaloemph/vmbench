@@ -121,6 +121,58 @@ class DocsAgreeWithScript(unittest.TestCase):
         self.assertEqual(found, list(self.script))
 
 
+GUIDES = [os.path.join(ROOT, "docs", name) for name in ("reading-results.md", "reading-results.th.md")]
+ID_TOKEN = re.compile(r"`((?:cpu|mem|disk|pg|net|web|burnin|info)\.[a-z0-9.{},*-]+)`")
+FILE_SUFFIXES = (".txt", ".log", ".err", ".json", ".md", ".sh", ".tsv")
+
+
+def expand_braces(token):
+    """`a.{1t,max}` -> [`a.1t`, `a.max`]; one brace group is enough for the guide."""
+    m = re.search(r"\{([^}]*)\}", token)
+    if not m:
+        return [token]
+    return [token[:m.start()] + part + token[m.end():] for part in m.group(1).split(",")]
+
+
+def guide_tokens(path):
+    """Backticked tokens in a reading guide that look like metric IDs (file names excluded)."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    return [t for t in ID_TOKEN.findall(text) if not t.endswith(FILE_SUFFIXES)]
+
+
+class ReadingGuide(unittest.TestCase):
+    """docs/reading-results.md and its Thai version explain every metric, and every ID they name is real."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.table = script_table()
+        cls.tokens = {os.path.relpath(p, ROOT): guide_tokens(p) for p in GUIDES}
+
+    def test_every_metric_is_explained(self):
+        for name, tokens in self.tokens.items():
+            with self.subTest(guide=name):
+                exact = {ident for t in tokens if "*" not in t for ident in expand_braces(t)}
+                missing = [ident for ident in self.table if ident not in exact]
+                self.assertEqual(missing, [], f"metric IDs that {name} does not name exactly")
+
+    def test_every_named_id_exists(self):
+        ids = list(self.table)
+        for guide, tokens in self.tokens.items():
+            for token in tokens:
+                for name in expand_braces(token):
+                    if "*" in name:
+                        pattern = re.compile("^" + re.escape(name).replace(r"\*", ".*") + "$")
+                        ok = any(pattern.match(i) for i in ids)
+                    else:   # a whole ID, or the start of some IDs such as cpu.cpubench.int.json
+                        ok = name in self.table or any(i.startswith(name + ".") for i in ids)
+                    self.assertTrue(ok, f"{guide} names {token!r}, which matches no metric ID")
+
+    def test_both_languages_name_the_same_ids(self):
+        en, th = (sorted(set(self.tokens[os.path.relpath(p, ROOT)])) for p in GUIDES)
+        self.assertEqual(en, th, "the English and Thai guides should name the same IDs")
+
+
 class RecordingCalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
