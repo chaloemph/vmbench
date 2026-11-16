@@ -91,9 +91,13 @@ stage_sustain_run() {
   if [ "$ts" = 1 ] && [ -s "$OUT/turbostat.txt" ]; then read -r mhz tmax watt < <(turbostat_stats "$OUT/turbostat.txt" "$k"); fi
   if [ "$mhz" != "-" ] && [ -n "$mhz" ]; then src="turbostat Bzy_MHz"
   else mhz=$(tail_avg "$OUT/sustain-mhz.txt" "$k"); src="/proc/cpuinfo or cpufreq (a VM may show a fixed nominal clock)"; fi
-  echo "clock source: $src" >> "$OUT/sustain.txt"
-  if [ -n "$mhz" ]; then rec sustain.stress-ng.all-core-mhz.max "$mhz" && ok sustain "all-core clock ($src)"
-  else bad sustain "all-core clock" "no clock samples"; fi
+  if [ -n "$mhz" ]; then
+    echo "clock source: $src" >> "$OUT/sustain.txt"
+    rec sustain.stress-ng.all-core-mhz.max "$mhz" && ok sustain "all-core clock ($src)"
+  else   # nothing to read the clock from: a missing source, like a missing tool, is a SKIP, not a FAIL
+    echo "clock source: none (no turbostat, no 'cpu MHz' in /proc/cpuinfo, no cpufreq)" >> "$OUT/sustain.txt"
+    skip sustain "all-core clock" "no clock source: no turbostat, no cpu MHz in /proc/cpuinfo, no cpufreq (common in ARM VMs)"
+  fi
   if [ "$tmax" != "-" ] && [ -n "$tmax" ]; then
     rec sustain.turbostat.pkg-temp.peak "$tmax"; ok sustain "package temperature"
     if [ -n "$tjmax" ]; then rec sustain.turbostat.thermal-headroom "$(awk -v a="$tjmax" -v b="$tmax" 'BEGIN{printf "%.0f", a - b}')"; echo "headroom: $tjmax - $tmax" >> "$OUT/sustain.txt"

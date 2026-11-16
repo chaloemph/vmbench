@@ -48,7 +48,10 @@ t=$(awk '$1=="nvme"{print $4, $5}' <<<"$OUTPUT"); [ "$t" = "147 min" ] && check 
 t=$(awk '$1=="sustain"{print $4, $5}' <<<"$OUTPUT"); [ "$t" = "47 min" ] && check "list: sustain default is 30 + 15 + 2 min" 0 || check "list: sustain default is 30 + 15 + 2 min" 1 "got '$t'"
 OUTPUT=$(HOME=$TMP/home CB=$TMP/x SUSTAIN_MINUTES=10 SUSTAIN_50_MINUTES=5 bash "$ROOT/vmbench" list 2>&1)
 t=$(awk '$1=="sustain"{print $4, $5}' <<<"$OUTPUT"); [ "$t" = "17 min" ] && check "list: SUSTAIN_MINUTES and SUSTAIN_50_MINUTES change the time" 0 || check "list: SUSTAIN_MINUTES and SUSTAIN_50_MINUTES change the time" 1 "got '$t'"
-grep -q '^nvme .*no: no devices' <<<"$OUTPUT" && grep -q '^sustain .*no: stress-ng is not installed' <<<"$OUTPUT" && check "list: nvme and sustain say what they need" 0 || check "list: nvme and sustain say what they need" 1 "$OUTPUT"
+# whatever else this machine lacks (fio, stress-ng), the nvme stage lists the missing devices among its problems
+nv=$(awk '$1=="nvme"{p=1; print; next} p && /^ {20,}/{print; next} {p=0}' <<<"$OUTPUT")
+grep -q 'no devices: set NVME_DEVS=' <<<"$nv" && grep -qE '^sustain .*no: ' <<<"$OUTPUT" && check "list: nvme says it needs NVME_DEVS, sustain is not ready without its tools" 0 \
+  || check "list: nvme says it needs NVME_DEVS, sustain is not ready without its tools" 1 "$OUTPUT"
 
 # --- stub tools. fio writes a JSON with one job per --name it was given (so totals over disks can be checked).
 cat > "$TMP/stubs/fio" <<'STUB'
@@ -123,6 +126,8 @@ stage_run() {
     for f in common metrics stream hw rawdev stages; do . "$VMBENCH_HOME/lib/$f.sh"; done
     . "$VMBENCH_HOME/stages/$s.sh"
     raw_problem() { :; }
+    # the kernel clock differs per machine (x86 has cpu MHz, many ARM VMs have nothing): CPU_MHZ_STUB fixes it, "none" = no source
+    [ -z "${CPU_MHZ_STUB+x}" ] || cpu_mhz_now() { [ "$CPU_MHZ_STUB" = none ] || printf %s "$CPU_MHZ_STUB"; }
     RES=$OUT/results.tsv; STATUS=$OUT/status.tsv; : > "$STATUS"; NPROC=4; RAM_GB=8; QUICK=${QUICK:-1}; LABEL=lbl; DATA_DIR=$OUT/data; DB_DIR=$DATA_DIR; WAL_DIR=$DATA_DIR
     FIO_SIZE=64M; RAW_DEV=${RAW_DEV:-}; NVME_DEVS=${NVME_DEVS:-}; CB=$OUT/cb; MEM_AVAIL_KB=1000000; BURNIN_HOURS=${BURNIN_HOURS:-1}
     SUSTAIN_MINUTES=${SUSTAIN_MINUTES:-8}; SUSTAIN_50_MINUTES=${SUSTAIN_50_MINUTES:-4}   # QUICK: seconds
@@ -165,7 +170,7 @@ if command -v jq >/dev/null 2>&1; then
 
   # --- sustain with turbostat and a BMC: clock from Bzy_MHz, temperature, headroom from the Tjmax line, power phases
   rm -rf "$TMP/st-sustain"; mkdir -p "$TMP/st-sustain"
-  res=$(stage_run sustain STRESS_LOG="$TMP/stress.log")
+  res=$(stage_run sustain CPU_MHZ_STUB=2400 STRESS_LOG="$TMP/stress.log")
   mhz=$(awk -F'\t' '$1=="sustain.stress-ng.all-core-mhz.max"{print $3}' <<<"$res")
   [ -n "$mhz" ] && [ "$mhz" -ge 3000 ] && [ "$mhz" -le 3600 ] && grep -q 'clock source: turbostat' "$TMP/st-sustain/sustain.txt" \
     && check "sustain: the all-core clock is the turbostat Bzy_MHz average ($mhz)" 0 || check "sustain: the all-core clock is the turbostat Bzy_MHz average" 1 "$res" "$(cat "$TMP/st-sustain/sustain.txt")"
@@ -180,17 +185,23 @@ if command -v jq >/dev/null 2>&1; then
     && check "sustain: the samples are kept (turbostat.txt, sensors, power, kernel clock)" 0 || check "sustain: the samples are kept" 1 "$(ls "$TMP/st-sustain")"
   # TJMAX overrides what turbostat says
   rm -rf "$TMP/st-sustain"; mkdir -p "$TMP/st-sustain"
-  res=$(stage_run sustain TJMAX=95)
+  res=$(stage_run sustain TJMAX=95 CPU_MHZ_STUB=2400)
   tmax=$(awk -F'\t' '$1=="sustain.turbostat.pkg-temp.peak"{print $3}' <<<"$res"); head=$(awk -F'\t' '$1=="sustain.turbostat.thermal-headroom"{print $3}' <<<"$res")
   [ -n "$tmax" ] && [ "$head" = $((95 - tmax)) ] && check "sustain: TJMAX=95 sets the Tjmax of the headroom" 0 || check "sustain: TJMAX=95 sets the Tjmax of the headroom" 1 "tmax=$tmax head=$head"
   # without turbostat and without a BMC (a VM): the clock comes from the kernel, everything else is skipped, not failed
   rm -rf "$TMP/st-sustain"; mkdir -p "$TMP/st-sustain"
-  res=$(stage_run sustain TURBOSTAT_OK=0 IPMI_OK=0 STRESS_LOG="$TMP/stress2.log")
-  [ "$(count '^sustain\.stress-ng\.all-core-mhz\.max\t' "$res")" = 1 ] && grep -q 'clock source: /proc/cpuinfo' "$TMP/st-sustain/sustain.txt" \
+  res=$(stage_run sustain TURBOSTAT_OK=0 IPMI_OK=0 CPU_MHZ_STUB=2400 STRESS_LOG="$TMP/stress2.log")
+  [ "$(count '^sustain\.stress-ng\.all-core-mhz\.max\t[^\t]*\t2400\tMHz\t1$' "$res")" = 1 ] && grep -q 'clock source: /proc/cpuinfo' "$TMP/st-sustain/sustain.txt" \
     && check "sustain without turbostat: the clock comes from the kernel" 0 || check "sustain without turbostat: the clock comes from the kernel" 1 "$res" "$(cat "$TMP/st-sustain/sustain.txt")"
   [ "$(count '^sustain\.(turbostat|ipmi)\.' "$res")" = 0 ] && [ "$(count '^sustain\t.*\tSKIP' "$res")" -ge 4 ] && [ "$(count '\tFAIL' "$res")" = 0 ] \
     && check "sustain without turbostat and BMC: temperature and power are SKIP, nothing FAILs" 0 || check "sustain without turbostat and BMC: temperature and power are SKIP, nothing FAILs" 1 "$res"
   [ "$(cat "$TMP/stress2.log")" = "stress-ng 8" ] && check "sustain without a BMC: the 50% load phase is not run" 0 || check "sustain without a BMC: the 50% load phase is not run" 1 "$(cat "$TMP/stress2.log")"
+  # no clock source at all (no turbostat, no cpu MHz, no cpufreq: an ARM VM): SKIP, not FAIL
+  rm -rf "$TMP/st-sustain"; mkdir -p "$TMP/st-sustain"
+  res=$(stage_run sustain TURBOSTAT_OK=0 IPMI_OK=0 CPU_MHZ_STUB=none)
+  [ "$(count '^sustain\.' "$res")" = 0 ] && [ "$(count '^sustain\tall-core clock\tSKIP no clock source' "$res")" = 1 ] && [ "$(count '\tFAIL' "$res")" = 0 ] \
+    && grep -q '^clock source: none' "$TMP/st-sustain/sustain.txt" \
+    && check "sustain without any clock source: the clock is SKIP, nothing FAILs" 0 || check "sustain without any clock source: the clock is SKIP, nothing FAILs" 1 "$res"
 
   # --- burnin: counters that grow during the run are errors (the BMC log gains 3 entries, a disk 2 media errors)
   rm -rf "$TMP/st-burnin"; mkdir -p "$TMP/st-burnin"

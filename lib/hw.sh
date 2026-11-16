@@ -11,7 +11,8 @@
 #   power_sampler_stop             stop it
 #   power_avg FILE [TAIL_SEC]      mean of the samples of FILE in its last TAIL_SEC seconds (all of them without
 #                                  TAIL_SEC), one decimal; prints nothing when the file has no sample
-#   cpu_mhz_now                    the average clock of all CPUs right now, from /proc/cpuinfo (x86) or cpufreq
+#   cpu_mhz_now                    the average clock of all CPUs right now, from /proc/cpuinfo (x86) or cpufreq;
+#                                  prints nothing when neither exists (common in ARM VMs)
 
 as_root() {
   if [ "$(id -u)" = 0 ]; then "$@"; return; fi
@@ -49,10 +50,11 @@ power_avg() { # FILE [TAIL_SEC]
 }
 
 cpu_mhz_now() {
-  local v
-  v=$(awk '/^cpu MHz/{s+=$4; n++} END{if (n) printf "%.0f", s/n}' /proc/cpuinfo 2>/dev/null)
-  if [ -z "$v" ]; then
-    v=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2>/dev/null | awk '{s+=$1; n++} END{if (n) printf "%.0f", s/n/1000}')
-  fi
+  local v f
+  v=$(awk '/^cpu MHz/{s+=$4; n++} END{if (n) printf "%.0f", s/n}' /proc/cpuinfo 2>/dev/null)   # x86
+  for f in scaling_cur_freq cpuinfo_cur_freq; do   # ARM and others: cpufreq, in kHz; often absent in a VM
+    [ -z "$v" ] || break
+    v=$(cat /sys/devices/system/cpu/cpu*/cpufreq/$f 2>/dev/null | awk '{s+=$1; n++} END{if (n) printf "%.0f", s/n/1000}')
+  done
   printf '%s' "$v"
 }
