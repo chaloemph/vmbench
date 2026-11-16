@@ -57,6 +57,17 @@ expect "list takes no arguments"                  2 "list takes no arguments"   
 expect "report without a subcommand"              2 "report needs a subcommand" bash "$VM" report
 expect "report with a wrong subcommand"           2 "unknown report subcommand 'bogus'" bash "$VM" report bogus
 expect "report show without a folder (report.py error)" 2 "usage:"              bash "$VM" report show
+expect "report xlsx without a folder"             2 "at least one result folder" bash "$VM" report xlsx
+expect "report xlsx of a missing folder"          2 "not found"                 bash "$VM" report xlsx "$TMP/nothing"
+run bash "$VM" report layout; n=$(grep -c . <<<"$OUTPUT"); ids=$(bash "$VM" run --metrics | grep -c '|')
+[ "$RC" = 0 ] && [ "$n" = $((ids + 1)) ] && [[ $OUTPUT == "section	id	name"* ]] && check "report layout prints the header and one row per metric ID" 0 || check "report layout prints the header and one row per metric ID" 1 "rc=$RC n=$n ids=$ids"
+if python3 -I -c 'import openpyxl' 2>/dev/null; then
+  mkdir -p "$TMP/xl"; cp "$ROOT"/tests/fixtures/vm-a/* "$TMP/xl/"
+  run bash "$VM" report xlsx "$TMP/xl"
+  [ "$RC" = 0 ] && [ -s "$TMP/xl/review.xlsx" ] && check "report xlsx writes DIR/review.xlsx" 0 || check "report xlsx writes DIR/review.xlsx" 1 "rc=$RC ${OUTPUT:0:200}"
+  run bash "$VM" report xlsx "$TMP/xl" --layout "$TMP/nothing.tsv"
+  [ "$RC" = 2 ] && [[ $OUTPUT == *"cannot be read"* ]] && check "report xlsx with a missing layout exits 2" 0 || check "report xlsx with a missing layout exits 2" 1 "rc=$RC"
+else echo "skip report xlsx (no openpyxl)"; fi
 expect "report show of a missing folder"          2 "not found"                 bash "$VM" report show "$TMP/nothing"
 fixture=$(find "$ROOT/tests/fixtures" -name results.tsv -print -quit)
 if [ -n "$fixture" ]; then

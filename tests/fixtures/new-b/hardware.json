@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "cpu": {
+    "vendor": "GenuineIntel",
+    "model": "Intel(R) Xeon(R) Gold 6430",
+    "family": "6",
+    "model_id": "143",
+    "stepping": "8",
+    "microcode": "0x2b000590",
+    "sockets": 2,
+    "cores_per_socket": 32,
+    "threads_per_core": 2,
+    "numa_nodes": 2,
+    "mhz_min": 800.0,
+    "mhz_max": 3400.0,
+    "cache": {
+      "l1d": "3 MiB (64 instances)",
+      "l1i": "2 MiB (64 instances)",
+      "l2": "128 MiB (64 instances)",
+      "l3": "120 MiB (2 instances)"
+    }
+  },
+  "freq": {
+    "driver": "intel_pstate",
+    "governor": "performance",
+    "min_khz": 800000,
+    "max_khz": 3400000,
+    "scaling_min_khz": 800000,
+    "scaling_max_khz": 3400000,
+    "turbo": "on",
+    "smt": "on",
+    "cpuidle_driver": "intel_idle",
+    "cpuidle_governor": "menu"
+  },
+  "system": {
+    "sys_vendor": "Example Systems",
+    "product_name": "EX-2U-R760",
+    "product_version": "01",
+    "board_vendor": "Example Systems",
+    "board_name": "EXB-760",
+    "board_version": "A02",
+    "bios_vendor": "Example BIOS Inc.",
+    "bios_version": "2.2.0",
+    "bios_date": "03/14/2026",
+    "bios_release": "2.1",
+    "bmc": {
+      "firmware": "7.10",
+      "manufacturer": "Example BMC Corp"
+    }
+  },
+  "memory": {
+    "slots": 4,
+    "populated": 2,
+    "dimms": [
+      {
+        "locator": "CPU1_A1",
+        "size_mb": 32768,
+        "type": "DDR5",
+        "speed_mts": 4800,
+        "configured_mts": 4800,
+        "manufacturer": "ExampleRAM",
+        "part": "EXR5-32G4800R"
+      },
+      {
+        "locator": "CPU1_A2",
+        "size_mb": 32768,
+        "type": "DDR5",
+        "speed_mts": 4800,
+        "configured_mts": 4800,
+        "manufacturer": "ExampleRAM",
+        "part": "EXR5-32G4800R"
+      }
+    ],
+    "configured_speeds": {
+      "4800": 2
+    },
+    "source": "dmidecode"
+  },
+  "nics": [
+    {
+      "name": "eno1",
+      "state": "down",
+      "speed_mbps": null,
+      "mtu": 1500,
+      "pci": "0000:04:00.0",
+      "model": "Example Networks EX-1G (rev 03)",
+      "driver": "exgbe",
+      "driver_version": "6.8.0-45-generic",
+      "firmware": "1.2.3",
+      "offloads": {
+        "tcp-segmentation-offload": "on",
+        "generic-receive-offload": "on"
+      }
+    },
+    {
+      "name": "ens1f0",
+      "state": "up",
+      "speed_mbps": 25000,
+      "mtu": 9000,
+      "pci": "0000:31:00.0",
+      "model": "Example Networks EX-25G Dual Port Adapter (rev 01)",
+      "driver": "exnic",
+      "driver_version": "6.8.0-45-generic",
+      "firmware": "22.36.1010 (EX_0000000001)",
+      "offloads": {
+        "tcp-segmentation-offload": "on",
+        "tx-tcp-segmentation": "on",
+        "generic-segmentation-offload": "on",
+        "generic-receive-offload": "on",
+        "large-receive-offload": "off",
+        "rx-vlan-offload": "on",
+        "tx-vlan-offload": "on",
+        "hw-tc-offload": "off"
+      }
+    }
+  ],
+  "disks": [
+    {
+      "name": "nvme0n1",
+      "model": "EXSSD PM9A3 3.84TB",
+      "firmware": "GDC5902Q",
+      "size": "3.5T",
+      "tran": "nvme",
+      "rota": 0
+    },
+    {
+      "name": "nvme1n1",
+      "model": "EXSSD PM9A3 3.84TB",
+      "firmware": "GDC5902Q",
+      "size": "3.5T",
+      "tran": "nvme",
+      "rota": 0
+    },
+    {
+      "name": "sda",
+      "model": "EX BOOT SSD 480G",
+      "firmware": "D3MU001",
+      "size": "447.1G",
+      "tran": "sata",
+      "rota": 0
+    }
+  ],
+  "nvme": [
+    {
+      "ctrl": "nvme0",
+      "model": "EXSSD PM9A3 3.84TB",
+      "firmware": "GDC5902Q"
+    },
+    {
+      "ctrl": "nvme1",
+      "model": "EXSSD PM9A3 3.84TB",
+      "firmware": "GDC5902Q"
+    },
+    {
+      "ctrl": "nvme10",
+      "model": "EXSSD PM9A3 3.84TB",
+      "firmware": "GDC5902Q"
+    }
+  ],
+  "nvme_models": {
+    "EXSSD PM9A3 3.84TB": 3
+  },
+  "bmc": {
+    "power_w": 312,
+    "temperatures": {
+      "Inlet Temp": 24,
+      "CPU1 Temp": 52
+    },
+    "fans": {
+      "FAN1": 5040,
+      "FAN2": 6120
+    }
+  },
+  "unavailable": []
+}

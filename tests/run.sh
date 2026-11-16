@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every test: the Python tests for report.py (tables, metric ids, languages) and hw.py (hardware.json), and the command line tests for
+# Runs every test: the Python tests for report.py (tables, metric ids, languages) hw.py (hardware.json) and xlsx.py (the Excel review sheet), and the command line tests for
 # run-benchmark.sh, the vmbench entry script, the stage files, the pinned STREAM source, the get.sh installer, the release tarball build, the rounds options, and --detach / status.
 #   bash tests/run.sh
 set -u
