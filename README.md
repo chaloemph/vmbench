@@ -128,7 +128,7 @@ vmbench status [DIR]
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)). `vmbench run --help` lists them all.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)), `XLSX=1` (also write `review.xlsx` at the end, see [Reports](#reports)), `XLSX_LAYOUT=FILE` (the `layout.tsv` for it; implies `XLSX=1`). `vmbench run --help` lists them all.
 
 ### Rounds
 
@@ -217,6 +217,12 @@ For a review meeting, the same numbers go into an Excel workbook (needs `python3
 ```
 
 Every metric ID has a row (an empty value says why: stage not run, the failed step, no value), with the median, CV, the real number of rounds and every single value of each run, and with two or more runs the difference and the verdict of `report compare`. Other sheets: the `hardware.json` fields side by side, the environment and warnings, CPU 1 thread vs all vCPUs, and `results.tsv` as it is. `layout.tsv` (kept by the team, outside this repository) sets sections, names, owner, priority, notes, rows from `hardware.json` (`hw:cpu.stepping`) and rows filled in by hand. See [docs/reading-results.md](docs/reading-results.md#excel-review-sheet).
+
+To get the workbook at the end of every run, set `XLSX=1` (or `XLSX_LAYOUT=/path/to/layout.tsv`, which implies it): after `report.md` the run writes `review.xlsx` into the result folder. The pre-flight checks that openpyxl is installed for `python3 -I` and that the layout parses, and refuses to start otherwise (exit 2); a failure at the end is only a warning in `run.log`. Both settings are carried into a `--detach` run, with the layout path made absolute.
+
+```bash
+XLSX_LAYOUT=~/layout.tsv ./vmbench run --with web,pg --detach
+```
 
 Marks and warnings you will see:
 

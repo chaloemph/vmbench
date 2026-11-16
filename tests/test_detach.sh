@@ -177,6 +177,17 @@ mkdir -p "$TMP/plain"; vb status "$TMP/plain"
 vb status a b
 [ "$RC" = 2 ] && check "status with two folders is a usage error" 0 || check "status with two folders is a usage error" 1 "rc=$RC $OUTPUT"
 
+# XLSX_LAYOUT reaches the detached run as an absolute path, with XLSX=1 (needs openpyxl: the pre-flight checks it)
+if python3 -I -c 'import openpyxl' 2>/dev/null; then
+  rm -rf "$OUTDIR"; rm -f "$TMP/sessions/"*
+  printf 'section\tid\tname\towner\tpriority\tnote\nCPU\tcpu.sysbench.prime.1t\n' > "$TMP/home/layout.tsv"
+  OUTPUT=$(cd "$TMP/home" && HOME=$TMP/home LABEL=lbl OUT=$OUTDIR DATA_DIR=$TMP/data CB=$TMP/no-cpubench XLSX_LAYOUT=layout.tsv PATH=$TMP/bin:$PATH timeout 30 bash "$ROOT/vmbench" run --detach --only info 2>&1); RC=$?
+  if [ "$RC" = 0 ] && grep -qx "export XLSX_LAYOUT=$TMP/home/layout.tsv" "$OUTDIR/.launch.sh" && grep -qx 'export XLSX=1' "$OUTDIR/.launch.sh"; then
+    check "--detach carries XLSX=1 and XLSX_LAYOUT as an absolute path" 0
+  else check "--detach carries XLSX=1 and XLSX_LAYOUT as an absolute path" 1 "rc=$RC $OUTPUT" "$(cat "$OUTDIR/.launch.sh" 2>/dev/null)"; fi
+  rm -f "$TMP/sessions/"*
+else echo "skip XLSX_LAYOUT with --detach (no openpyxl)"; fi
+
 # --- with a real tmux, when there is one (its own socket directory, so no session of the user is touched)
 if command -v tmux >/dev/null 2>&1 && tmux -V >/dev/null 2>&1; then
   export TMUX_TMPDIR=$TMP/tmux; mkdir -p "$TMUX_TMPDIR"; unset TMUX

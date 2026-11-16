@@ -68,6 +68,39 @@ if python3 -I -c 'import openpyxl' 2>/dev/null; then
   run bash "$VM" report xlsx "$TMP/xl" --layout "$TMP/nothing.tsv"
   [ "$RC" = 2 ] && [[ $OUTPUT == *"cannot be read"* ]] && check "report xlsx with a missing layout exits 2" 0 || check "report xlsx with a missing layout exits 2" 1 "rc=$RC"
 else echo "skip report xlsx (no openpyxl)"; fi
+
+# --- XLSX / XLSX_LAYOUT: pre-flight refusals (nothing runs), review.xlsx at the end of a QUICK info run
+rm -rf "$TMP/out"
+expect "XLSX_LAYOUT of a missing file: pre-flight exit 2" 2 "XLSX_LAYOUT: $TMP/nothing.tsv is not a readable file" env XLSX_LAYOUT="$TMP/nothing.tsv" bash "$VM" run --only info
+printf 'section\tid\tname\towner\tpriority\tnote\nCPU\tcpu.bogus\n' > "$TMP/bad-layout.tsv"
+expect "XLSX_LAYOUT that does not parse: pre-flight exit 2" 2 "unknown metric ID 'cpu.bogus'" env XLSX_LAYOUT="$TMP/bad-layout.tsv" bash "$VM" run --only info
+expect "XLSX=yes is refused"                      2 "XLSX needs 1 or 0"         env XLSX=yes bash "$VM" run --only info
+expect "XLSX=0 with XLSX_LAYOUT is refused"       2 "XLSX=0"                    env XLSX=0 XLSX_LAYOUT="$TMP/bad-layout.tsv" bash "$VM" run --only info
+[ ! -e "$TMP/out" ] && check "a refused XLSX run leaves no result folder" 0 || check "a refused XLSX run leaves no result folder" 1 "$(ls -A "$TMP/out")"
+# without openpyxl (python3 -I -c 'import openpyxl' fails): a python3 wrapper that runs with -S hides site-packages
+mkdir -p "$TMP/nopyxl"; printf '#!/usr/bin/env bash\nexec %q -S "$@"\n' "$(command -v python3)" > "$TMP/nopyxl/python3"; chmod +x "$TMP/nopyxl/python3"
+expect "XLSX=1 without openpyxl: pre-flight exit 2"  2 "sudo apt-get install python3-openpyxl" env PATH="$TMP/nopyxl:$PATH" XLSX=1 bash "$VM" run --only info
+if python3 -I -c 'import openpyxl' 2>/dev/null; then
+  # mpstat stub: a steal line, so an info-only run has values (report.py and xlsx.py need at least one)
+  mkdir -p "$TMP/mpstat"; printf '#!/usr/bin/env bash\necho "00:00:05 CPU %%usr %%steal %%idle"\necho "00:00:05 all 1.00 0.20 98.80"\nexec sleep 300\n' > "$TMP/mpstat/mpstat"; chmod +x "$TMP/mpstat/mpstat"
+  printf 'section\tid\tname\towner\tpriority\tnote\nContext\tinfo.cpu.steal.avg\tCPU steal\tTeam\tMust have\nHardware\thw:cpu.model\tCPU model\n' > "$TMP/layout.tsv"
+  rm -rf "$TMP/out"
+  RUN_TIMEOUT=120 run env PATH="$TMP/mpstat:$PATH" QUICK=1 XLSX_LAYOUT="$TMP/layout.tsv" bash "$VM" run --only info
+  ok=$(python3 -I - "$TMP/out/review.xlsx" <<'PY' 2>&1
+import sys, openpyxl
+with open(sys.argv[1], "rb") as f:
+    wb = openpyxl.load_workbook(f)
+ws = wb["Review"]
+rows = [r for r in ws.iter_rows(values_only=True)]
+ids = [r[-1] for r in rows]
+print("ok" if ws.cell(1, 1).value == "Section" and ids.index("info.cpu.steal.avg") < ids.index("hw:cpu.model")
+      and rows[ids.index("hw:cpu.model")][7] else "bad: %r" % rows[:4])
+PY
+)
+  [ "$RC" = 0 ] && [ "$ok" = ok ] && grep -q "review.xlsx: $TMP/out/review.xlsx" "$TMP/out/run.log" \
+    && check "QUICK run with XLSX_LAYOUT: review.xlsx in the layout order, with the hardware.json row" 0 \
+    || check "QUICK run with XLSX_LAYOUT: review.xlsx" 1 "rc=$RC $ok" "${OUTPUT: -400}"
+else echo "skip XLSX=1 run (no openpyxl)"; fi
 expect "report show of a missing folder"          2 "not found"                 bash "$VM" report show "$TMP/nothing"
 fixture=$(find "$ROOT/tests/fixtures" -name results.tsv -print -quit)
 if [ -n "$fixture" ]; then
