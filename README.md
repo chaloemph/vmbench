@@ -125,7 +125,7 @@ vmbench status [DIR]
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder). `vmbench run --help` lists them all.
 
 ### Rounds
 
@@ -137,6 +137,7 @@ Every stage that repeats writes one row per value per round into `results.tsv` (
 | `mem` | 3 | `--rounds N`, `MEM_ROUNDS` | STREAM and `lat_mem_rd` once (about 1 min; `stream.c` is compiled once) |
 | `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 6 min) |
 | `disk` | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1 is the whole sequence; rounds 2 to N repeat only the 4 KiB random-read latency (p99, p99.9), random read, 70/30 mix and the WAL `fdatasync` test (about 20 min each) |
+| `pg` | 1 | `PG_ROUNDS` | the data is loaded once; every round is CHECKPOINT, 1 min warm-up, the 10 min TPC-B run and the 5 min single-session run (about 16 min) |
 
 `ROUNDS` is the default of `mem` and `web` as well; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage, and `--rounds N` overrides all three. `QUICK=1` runs one round unless you ask for more. A value must be a whole number of 1 or more; anything else exits with code 2 before anything runs. `meta.json` records the count of each stage (`rounds_by_stage`).
 
@@ -162,7 +163,11 @@ A file with another hash (a changed download, a stale copy in `~/bench-cache/str
 
 ### PostgreSQL stage
 
-`vmbench setup postgres` (or `bash setup-postgres-bench.sh`) creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster.
+`vmbench setup postgres` (or `bash setup-postgres-bench.sh`) creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster. The data goes to `/pgdata` and the WAL to `/pgwal` when those are mount points, otherwise to the OS disk.
+
+The cluster's settings follow the same rules on every machine, so two machines differ only in what the rules derive from their RAM and disks: `shared_buffers` 25% of RAM, `max_wal_size` 16 GB (8 GB on the OS disk; `MAX_WAL_SIZE=` overrides it), `checkpoint_timeout` 15 min, `synchronous_commit` and `fsync` on, `max_connections` 200. Everything else that can change a pgbench result is pinned to one value instead of left at a default that may differ between versions or packages: `huge_pages=off`, data checksums on, `wal_level=replica`, `wal_compression=off`, `checkpoint_completion_target=0.9`, `autovacuum=on`, `jit=off`, `track_io_timing=on`. The setup only applies them to a new cluster: to change an existing one, drop it (`sudo pg_dropcluster --stop <ver> bench`) and run the setup again.
+
+The stage loads the data once (scale factor from `PG_SCALE`, by default 1.5 × RAM so that the working set is larger than memory, capped by free space in the data directory) and then runs `PG_ROUNDS` rounds of: `CHECKPOINT`, a 1 min warm-up, the 10 min TPC-B run with 2 × vCPU clients, another `CHECKPOINT` and the 5 min single-client run. The checkpoint makes every measured run start from a clean state; without it the checkpoint forced by the data load lands somewhere inside the run and the stability value depends on where. The role needs `pg_checkpoint` for that (PostgreSQL 15+, granted by the setup; the pre-flight check refuses the stage otherwise). The result folder gets `pg-settings.txt` (version and every setting that matters, for a diff between two machines) and `pg-checkpoints.txt` (how many checkpoints happened inside each measured run; more than zero explains a low stability value). Compare `pg.*` values only between runs with the same `PG_SCALE` and the same `pg-settings.txt`, and read the kernel section of `info.txt` (transparent hugepages, dirty-page writeback, I/O scheduler, mount options) when the two differ.
 
 ### Raw disk
 

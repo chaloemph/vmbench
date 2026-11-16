@@ -55,7 +55,7 @@ detach_run() {
   {
     echo '#!/usr/bin/env bash'
     echo "# written by vmbench run (the detach option): the settings of the run that tmux session '$name' starts"
-    for v in LABEL OUT QUICK ROUNDS MEM_ROUNDS WEB_ROUNDS DISK_ROUNDS CB DATA_DIR FIO_SIZE RAW_DEV DB_DIR WAL_DIR PEER \
+    for v in LABEL OUT QUICK ROUNDS MEM_ROUNDS WEB_ROUNDS DISK_ROUNDS PG_ROUNDS PG_SCALE CB DATA_DIR FIO_SIZE RAW_DEV DB_DIR WAL_DIR PEER \
              BURNIN_HOURS PGPORT PGDATABASE PGHOST PGUSER CONFIRM_WIPE STREAM_C STREAM_URL STREAM_SKIP_CHECK \
              STREAM_CACHE_DIR VMBENCH_LANG VMBENCH_PROG HOME PATH; do
       [ -n "${!v+x}" ] && printf 'export %s=%q\n' "$v" "${!v}"
@@ -80,17 +80,20 @@ cmd_run() {
   LABEL=${LABEL:-$(hostname -s)}
   QUICK=${QUICK:-0}
   # Repeats per stage. ROUNDS is the default of cpu, mem and web; MEM_ROUNDS and WEB_ROUNDS set one of them;
-  # --rounds N sets all three. disk has its own setting because one disk round is long (docs/tests.md, "Rounds").
-  local rounds_given=${ROUNDS:+1}${MEM_ROUNDS:+1}${WEB_ROUNDS:+1}${DISK_ROUNDS:+1}
+  # --rounds N sets all three. disk and pg have their own settings because one round of them is long
+  # (docs/tests.md, "Rounds").
+  local rounds_given=${ROUNDS:+1}${MEM_ROUNDS:+1}${WEB_ROUNDS:+1}${DISK_ROUNDS:+1}${PG_ROUNDS:+1}
   [ -z "${ROUNDS:-}" ] || positive_int ROUNDS "$ROUNDS"
   [ -z "${MEM_ROUNDS:-}" ] || positive_int MEM_ROUNDS "$MEM_ROUNDS"
   [ -z "${WEB_ROUNDS:-}" ] || positive_int WEB_ROUNDS "$WEB_ROUNDS"
   [ -z "${DISK_ROUNDS:-}" ] || positive_int DISK_ROUNDS "$DISK_ROUNDS"
+  [ -z "${PG_ROUNDS:-}" ] || positive_int PG_ROUNDS "$PG_ROUNDS"
   [ "$QUICK" != 1 ] || [ -n "$rounds_given" ] || ROUNDS=1   # a smoke run is one round unless rounds were asked for
   ROUNDS=${ROUNDS:-3}
   MEM_ROUNDS=${MEM_ROUNDS:-$ROUNDS}
   WEB_ROUNDS=${WEB_ROUNDS:-$ROUNDS}
   DISK_ROUNDS=${DISK_ROUNDS:-1}
+  PG_ROUNDS=${PG_ROUNDS:-1}
   CB=${CB:-$HOME/cpubench-current}
   DATA_DIR=${DATA_DIR:-$HOME/bench-data}
   FIO_SIZE=${FIO_SIZE:-8G}

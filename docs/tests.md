@@ -111,8 +111,9 @@ A stage that repeats writes one `results.tsv` row per value per round (the `roun
 | mem | 3 | `--rounds N`, `MEM_ROUNDS` | `mem.stream.triad.max`, `mem.stream.copy.max`, `mem.lmbench.lat-mem-rd.1t` (STREAM is compiled once) |
 | web | 3 | `--rounds N`, `WEB_ROUNDS` | `web.cpubench.mix.max-rps` (the whole loopback test, a new label per round) |
 | disk | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1: every `disk.*` metric. Rounds 2 to N: only the ones below |
+| pg | 1 | `PG_ROUNDS` | `pg.pgbench.tpcb.tps`, `pg.pgbench.tpcb.stability`, `pg.pgbench.latency.single` (CHECKPOINT, warm-up, TPC-B run, CHECKPOINT, single-session run; the data load is not repeated) |
 
-`--rounds` and the variables take a whole number of 1 or more (exit 2 otherwise). `ROUNDS` is the default of cpu, mem and web; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage; `--rounds` overrides all three; `QUICK=1` means one round unless rounds are given.
+`--rounds` and the variables take a whole number of 1 or more (exit 2 otherwise). `ROUNDS` is the default of cpu, mem and web; `MEM_ROUNDS` and `WEB_ROUNDS` override it for one stage; `--rounds` overrides all three; `QUICK=1` means one round unless rounds are given. `DISK_ROUNDS` and `PG_ROUNDS` are independent of `ROUNDS`.
 
 **Disk rounds.** One disk round of the full sequence takes about 70 minutes and writes 8 GB, so `disk` defaults to one round and `DISK_ROUNDS=N` repeats only the tests that are cheap (about 20 minutes per extra round) and whose run-to-run noise matters for a decision, on the file that is already filled:
 
@@ -122,6 +123,8 @@ A stage that repeats writes one `results.tsv` row per value per round (the `roun
 - `disk.wal.fdatasync.avg`, `disk.wal.fdatasync.p99`, `disk.wal.commit-iops.qd1`
 
 Not repeated, they run once whatever `DISK_ROUNDS` is: the fill (`info.fio.fill-write-1m`), the steady-state random write (it needs the fill and depends on the history of the device, so a second run is not a repeat of the first), the sequential tests, the queue-depth sweep and the `disk.fio.db-*` tests. Raw files of round 1 keep their old names (`fio-34-lat.json`); later rounds add `-r2`, `-r3`.
+
+**pg rounds.** `pgbench -i` loads the data once (1.5 × RAM, so tens of GB on a real machine). Each round then takes about 16 minutes and starts with `CHECKPOINT`, so the dirty pages of the load or of the previous round are written out before the measurement and every round sees the same starting state. `pg-checkpoints.txt` in the result folder counts the checkpoints that still happened inside each measured run (timed, or requested because `max_wal_size` was reached). Raw files of round 1 keep their names (`pgbench-tpcb.log`); later rounds add `-r2`, `-r3`.
 
 ## STREAM source
 

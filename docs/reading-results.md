@@ -164,7 +164,8 @@ How to read the pg group:
 
 - TPS is limited by whichever resource runs out first: often commit latency (compare with the WAL values in the disk group), sometimes CPU.
 - Stability matters as much as TPS. A machine with slightly lower TPS but higher stability gives a more predictable service.
-- These results depend on the data size (`PG_SCALE`) and on PostgreSQL settings. Only compare runs with the same scale and the same settings (`pg-settings.txt` in the result folder lists them).
+- These results depend on the data size (`PG_SCALE`) and on PostgreSQL settings. Only compare runs with the same scale and the same settings (`pg-settings.txt` in the result folder lists them, including the version and the data checksums, so two files can be diffed).
+- A low stability value with checkpoints counted in `pg-checkpoints.txt` means the run included a checkpoint: compare the `disk.wal.*` and `disk.fio.db-*` values, the checkpoint is where the storage shows.
 
 ## net
 
