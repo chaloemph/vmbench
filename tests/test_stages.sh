@@ -16,7 +16,7 @@ check() { # name, ok (0 = pass), details...
 }
 
 REQUIRED="order default time note check run"
-EXPECTED="cpu mem disk pg net web burnin"
+EXPECTED="cpu mem disk nvme pg net web sustain burnin"
 
 # load the stages in a subshell the same way vmbench does and report what each one defines
 report=$(
@@ -42,7 +42,7 @@ report=$(
 files=$(ls "$ROOT"/stages/*.sh | wc -l)
 missing=$(grep '^missing ' <<<"$report")
 [ -z "$missing" ] && check "every stage file defines: $REQUIRED" 0 || check "every stage file defines: $REQUIRED" 1 "$missing"
-[ "$files" = 8 ] && check "stages/ holds the eight stages (info + $EXPECTED)" 0 || check "stages/ holds the eight stages" 1 "files=$files"
+[ "$files" = 10 ] && check "stages/ holds the ten stages (info + $EXPECTED)" 0 || check "stages/ holds the ten stages" 1 "files=$files"
 
 # the sourced stages are what vmbench lists, in order, and info is not a selectable stage
 all=$(sed -n 's/^ALL=//p' <<<"$report")

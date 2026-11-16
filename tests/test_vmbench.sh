@@ -47,8 +47,8 @@ run bash "$VM" run --metrics; n=$(grep -cE '^[a-z]+(\.[a-z0-9-]+)+\|' <<<"$OUTPU
 [ "$RC" = 0 ] && [ "$n" -gt 50 ] && check "run --metrics prints the table" 0 || check "run --metrics prints the table" 1 "rc=$RC n=$n"
 
 # --- list
-run bash "$VM" list; rows=$(grep -cE '^(cpu|mem|disk|pg|net|web|burnin) ' <<<"$OUTPUT")
-[ "$RC" = 0 ] && [ "$rows" = 7 ] && [[ $OUTPUT == STAGE* ]] && check "list shows the seven stages and exits 0" 0 || check "list shows the seven stages and exits 0" 1 "rc=$RC rows=$rows"
+run bash "$VM" list; rows=$(grep -cE '^(cpu|mem|disk|nvme|pg|net|web|sustain|burnin) ' <<<"$OUTPUT")
+[ "$RC" = 0 ] && [ "$rows" = 9 ] && [[ $OUTPUT == STAGE* ]] && check "list shows the nine stages and exits 0" 0 || check "list shows the nine stages and exits 0" 1 "rc=$RC rows=$rows"
 list1=$OUTPUT
 run bash "$VM" run --list; [ "$OUTPUT" = "$list1" ] && check "list is the same as run --list" 0 || check "list is the same as run --list" 1
 expect "list takes no arguments"                  2 "list takes no arguments"   bash "$VM" list extra

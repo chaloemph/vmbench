@@ -78,11 +78,11 @@ run env RAW_DEV=/dev/null CONFIRM_WIPE=yes bash "$SCRIPT" --only disk
 if [ "$RC" = 2 ] && [[ $OUTPUT == *"is not a block device"* ]]; then check "RAW_DEV that is not a block device is refused" 0
 else check "RAW_DEV that is not a block device is refused" 1 "exit=$RC" "got: ${OUTPUT:0:200}"; fi
 
-# --list: always exits 0 and shows all seven stages whatever is installed
+# --list: always exits 0 and shows all nine stages whatever is installed
 sb --list
-rows=$(grep -cE '^(cpu|mem|disk|pg|net|web|burnin) ' <<<"$OUTPUT")
-if [ "$RC" = 0 ] && [ "$rows" = 7 ] && [[ $OUTPUT == STAGE* ]]; then check "--list shows the seven stages" 0
-else check "--list shows the seven stages" 1 "exit=$RC, stage lines=$rows"; fi
+rows=$(grep -cE '^(cpu|mem|disk|nvme|pg|net|web|sustain|burnin) ' <<<"$OUTPUT")
+if [ "$RC" = 0 ] && [ "$rows" = 9 ] && [[ $OUTPUT == STAGE* ]]; then check "--list shows the nine stages" 0
+else check "--list shows the nine stages" 1 "exit=$RC, stage lines=$rows"; fi
 
 # STAGES from the environment is ignored, with a note, once --with or --only is given
 run env STAGES="cpu" bash "$SCRIPT" --only=web
@@ -95,6 +95,10 @@ if [ "$RC" = 0 ]; then check "info stage exits 0" 0; else check "info stage exit
 if [ -f "$TMP/out/info.txt" ] && grep -q '^label: ci-label' "$TMP/out/info.txt" && grep -q '^nproc: ' "$TMP/out/info.txt"; then
   check "info.txt records the label and the vCPU count" 0
 else check "info.txt records the label and the vCPU count" 1; fi
+if [ -f "$TMP/out/hardware.txt" ] && grep -q '^--- cpu' "$TMP/out/hardware.txt" && grep -q '^microcode:' "$TMP/out/hardware.txt" && grep -q '^--- disks' "$TMP/out/hardware.txt" \
+   && ! grep -qi 'serial number' "$TMP/out/hardware.txt" && grep -qP '^info\thardware\tOK$' "$TMP/out/status.tsv"; then
+  check "hardware.txt records the CPU, firmware and disk facts without serial numbers" 0
+else check "hardware.txt records the CPU, firmware and disk facts without serial numbers" 1 "$(head -5 "$TMP/out/hardware.txt" 2>&1)"; fi
 if grep -qP '^info\tmetadata\tOK$' "$TMP/out/status.tsv" 2>/dev/null; then check "status.tsv records the info step" 0
 else check "status.tsv records the info step" 1; fi
 if [ -f "$TMP/out/results.tsv" ] && [ "$(head -1 "$TMP/out/results.tsv")" = $'id\tmetric\tvalue\tunit\tround' ]; then

@@ -50,4 +50,6 @@ show_stages() {
   echo "      rounds (--rounds N, now cpu $ROUNDS, mem $MEM_ROUNDS, web $WEB_ROUNDS), disk only with --disk-rounds N (now $DISK_ROUNDS),"
   echo "      pg only with PG_ROUNDS=N (now ${PG_ROUNDS:-1}, plus the data load once)."
   echo "      pg and net come from the test durations in this script and have not been timed on a real run."
+  echo "      The nvme stage is 9 min plus about 46 min per disk of NVME_DEVS (now $(nvme_dev_count)); the sustain stage is"
+  echo "      SUSTAIN_MINUTES + SUSTAIN_50_MINUTES (now $SUSTAIN_MINUTES + $SUSTAIN_50_MINUTES) plus 2 min idle; neither has been timed on a real machine."
 }

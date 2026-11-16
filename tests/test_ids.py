@@ -24,10 +24,11 @@ report = importlib.util.module_from_spec(spec)
 sys.modules["report"] = report
 spec.loader.exec_module(report)
 
-STAGES = {"cpu", "mem", "disk", "pg", "net", "web", "burnin", "info"}
+STAGES = {"cpu", "mem", "disk", "nvme", "pg", "net", "web", "sustain", "burnin", "info"}
 DIRECTION = {"higher": 1, "lower": -1, "none": 0}
 # ids that the script builds from a variable, so a literal `rec <id>` cannot be found for them
-DYNAMIC = (re.compile(r"cpu\.cpubench\..+\.(1t|max)$"), re.compile(r"disk\.fio\.randread-4k\.sweep-qd\d+$"))
+DYNAMIC = (re.compile(r"cpu\.cpubench\..+\.(1t|max)$"), re.compile(r"disk\.fio\.randread-4k\.sweep-qd\d+$"),
+           re.compile(r"nvme\.fio\.randread-4k\.sweep-qd\d+\.per-disk$"))
 
 
 def script_table():
@@ -122,7 +123,7 @@ class DocsAgreeWithScript(unittest.TestCase):
 
 
 GUIDES = [os.path.join(ROOT, "docs", name) for name in ("reading-results.md", "reading-results.th.md")]
-ID_TOKEN = re.compile(r"`((?:cpu|mem|disk|pg|net|web|burnin|info)\.[a-z0-9.{},*-]+)`")
+ID_TOKEN = re.compile(r"`((?:cpu|mem|disk|nvme|pg|net|web|sustain|burnin|info)\.[a-z0-9.{},*-]+)`")
 FILE_SUFFIXES = (".txt", ".log", ".err", ".json", ".md", ".sh", ".tsv")
 
 
@@ -187,7 +188,8 @@ class RecordingCalls(unittest.TestCase):
         cls.source = "\n".join(parts)
 
     def recorded(self):
-        return set(re.findall(r"\brec \"?([a-z0-9]+(?:\.[a-z0-9-]+)+)\"?[ ;]", self.source))
+        # rec, and nvme_rec (stages/nvme.sh), which records a per-disk value through rec
+        return set(re.findall(r"\b(?:rec|nvme_rec) \"?([a-z0-9]+(?:\.[a-z0-9-]+)+)\"?[ ;]", self.source))
 
     def test_every_recorded_id_is_in_the_table(self):
         for ident in self.recorded():

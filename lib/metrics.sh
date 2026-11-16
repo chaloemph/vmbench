@@ -7,6 +7,8 @@
 #   M_UNIT[id] M_LABEL[id]            unit and label template of every id, filled from the table
 #
 # Adding a metric: add one line to the table here and one line to docs/tests.md (tests/test_ids.py checks both).
+# A value with no {t} and no {x} in its label pairs up between machines whatever their size: keep per-machine facts
+# (disk count, vCPU count) out of the label unless report.py strips them, as it does for (N=...).
 
 # ---------------------------------------------------------------- metric ids
 # The one place where result ids are defined. Columns: id|unit|direction|tool|label|what it measures
@@ -49,6 +51,7 @@ cpu.cpubench.int.sort.1t|varies|higher|cpubench|cpubench int/sort {t}t|Sorting (
 cpu.cpubench.int.sort.max|varies|higher|cpubench|cpubench int/sort {t}t|Sorting (median of cpubench iterations), all vCPUs
 mem.stream.triad.max|MB/s|higher|STREAM|stream triad (N={x})|Memory bandwidth, triad kernel, all vCPUs
 mem.stream.copy.max|MB/s|higher|STREAM|stream copy (N={x})|Memory bandwidth, copy kernel, all vCPUs
+mem.stream.triad.cross-numa|MB/s|higher|STREAM|stream triad cross-numa (N={x})|Memory bandwidth, triad kernel, CPUs of NUMA node 0 reading memory of node 1 (two or more nodes only)
 mem.lmbench.lat-mem-rd.1t|ns|lower|lmbench|lat_mem_rd -t {x}MB|Memory load latency at the largest working set (-t, 1 process)
 disk.fio.randwrite-4k.qd32x4|IOPS|higher|fio|fio randwrite 4k qd32x4|4 KiB random write, queue depth 32 x 4 jobs, after fill to steady state
 disk.fio.randwrite-4k.steadystate|flag|none|fio|steadystate attained (1=yes)|1 if the random-write run reached fio steady state (context, not scored)
@@ -73,9 +76,26 @@ disk.fio.db-randread-8k|IOPS|higher|fio|fio randread 8k|8 KiB random read on fil
 disk.wal.fdatasync.avg|ms|lower|fio|wal fdatasync avg|WAL-style 8 KiB write + fdatasync, queue depth 1, mean latency
 disk.wal.fdatasync.p99|ms|lower|fio|wal fdatasync p99|WAL-style 8 KiB write + fdatasync, 99th percentile latency
 disk.wal.commit-iops.qd1|IOPS|higher|fio|wal commit iops qd1|WAL-style commits per second at queue depth 1
+nvme.fio.randread-4k.qd32x4.all-disks|IOPS|higher|fio|nvme randread 4k qd32x4 all disks|4 KiB random read on every NVME_DEVS disk at once, queue depth 32 x 4 jobs per disk, total
+nvme.fio.seq-read-1m.all-disks|GB/s|higher|fio|nvme seq read 1M all disks|1 MiB sequential read on every NVME_DEVS disk at once, queue depth 16, total
+nvme.fio.randwrite-4k.qd32x4.per-disk|IOPS|higher|fio|nvme randwrite 4k qd32x4 per disk|4 KiB random write, queue depth 32 x 4 jobs, 10 min on one disk (one row per disk)
+nvme.fio.randread-4k.qd1.p99.per-disk|us|lower|fio|nvme randread 4k qd1 p99 per disk|4 KiB random read latency, queue depth 1, 99th percentile, one disk (one row per disk)
+nvme.fio.randread-4k.qd1.p999.per-disk|us|lower|fio|nvme randread 4k qd1 p99.9 per disk|4 KiB random read latency, queue depth 1, 99.9th percentile, one disk (one row per disk)
+nvme.fio.randread-4k.qd32x4.per-disk|IOPS|higher|fio|nvme randread 4k qd32x4 per disk|4 KiB random read, queue depth 32 x 4 jobs, one disk (one row per disk)
+nvme.fio.mixed-70-30-4k.read.per-disk|IOPS|higher|fio|nvme mixed 70/30 read per disk|4 KiB random 70% read / 30% write mix on one disk, read side (one row per disk)
+nvme.fio.mixed-70-30-4k.write.per-disk|IOPS|higher|fio|nvme mixed 70/30 write per disk|4 KiB random 70% read / 30% write mix on one disk, write side (one row per disk)
+nvme.fio.seq-read-1m.per-disk|MB/s|higher|fio|nvme seq read 1M per disk|1 MiB sequential read, queue depth 16, one disk (one row per disk)
+nvme.fio.seq-write-1m.per-disk|MB/s|higher|fio|nvme seq write 1M per disk|1 MiB sequential write, queue depth 16, one disk (one row per disk)
+nvme.fio.randread-4k.sweep-qd1.per-disk|IOPS|higher|fio|nvme randread 4k qd1 x4 per disk|4 KiB random read at queue depth 1 x 4 jobs, one disk (queue-depth sweep, one row per disk)
+nvme.fio.randread-4k.sweep-qd4.per-disk|IOPS|higher|fio|nvme randread 4k qd4 x4 per disk|4 KiB random read at queue depth 4 x 4 jobs, one disk (queue-depth sweep, one row per disk)
+nvme.fio.randread-4k.sweep-qd16.per-disk|IOPS|higher|fio|nvme randread 4k qd16 x4 per disk|4 KiB random read at queue depth 16 x 4 jobs, one disk (queue-depth sweep, one row per disk)
+nvme.fio.randread-4k.sweep-qd32.per-disk|IOPS|higher|fio|nvme randread 4k qd32 x4 per disk|4 KiB random read at queue depth 32 x 4 jobs, one disk (queue-depth sweep, one row per disk)
+nvme.fio.randread-4k.sweep-qd64.per-disk|IOPS|higher|fio|nvme randread 4k qd64 x4 per disk|4 KiB random read at queue depth 64 x 4 jobs, one disk (queue-depth sweep, one row per disk)
+nvme.fio.randread-4k.sweep-qd128.per-disk|IOPS|higher|fio|nvme randread 4k qd128 x4 per disk|4 KiB random read at queue depth 128 x 4 jobs, one disk (queue-depth sweep, one row per disk)
 pg.pgbench.tpcb.tps|TPS|higher|pgbench|pgbench tpcb-like tps (-c {x})|TPC-B-like transactions per second with 2 x vCPU clients
 pg.pgbench.tpcb.stability|%|higher|pgbench|tps stability 100*(1-cv)|Steadiness of TPS over the run, 100 x (1 - coefficient of variation)
 pg.pgbench.latency.single|ms|lower|pgbench|pgbench single-session latency|Average transaction latency with one client
+pg.pgbench.tpcb.tps-per-watt|TPS/W|higher|pgbench, ipmitool|pgbench tpcb-like tps per watt|TPC-B-like TPS divided by the average system power from the BMC during that run (performance per watt)
 net.iperf3.tcp.tx|Gbps|higher|iperf3|iperf3 tcp tx->peer|TCP throughput to the peer, 8 streams
 net.iperf3.tcp.rx|Gbps|higher|iperf3|iperf3 tcp peer->rx|TCP throughput from the peer, 8 streams
 net.iperf3.tcp.bidir|Gbps|higher|iperf3|iperf3 tcp bidir total|TCP throughput, both directions added
@@ -84,6 +104,14 @@ net.sockperf.pingpong.p99|us|lower|sockperf|sockperf ping-pong p99|99th percenti
 net.iperf3.udp.pps|Mpps|higher|iperf3|iperf3 udp 64B packets sent|UDP packets sent per second, 64-byte payload
 net.iperf3.udp.loss|%|lower|iperf3|iperf3 udp lost packets %|UDP packet loss at the maximum send rate
 web.cpubench.mix.max-rps|RPS|higher|cpubench|cpubench web mix max RPS @ SLO (loopback)|Highest requests per second within the latency target (loopback)
+sustain.stress-ng.all-core-mhz.max|MHz|higher|stress-ng, turbostat|all-core clock under load|Average all-core clock over the last 5 minutes of a 30 minute stress-ng matrixprod load on all vCPUs
+sustain.turbostat.pkg-temp.peak|C|none|turbostat|pkg temp peak|Highest CPU package temperature during the full load (context, not scored)
+sustain.turbostat.thermal-headroom|C|higher|turbostat|thermal headroom|Tjmax minus the peak package temperature under full load (TJMAX overrides the detected Tjmax)
+sustain.turbostat.pkg-watt.full|W|lower|turbostat|pkg watt full load|Average CPU package power (RAPL) over the last 5 minutes of the full load
+sustain.ipmi.power.idle|W|lower|ipmitool|bmc power idle|Average system power from the BMC while the machine is idle
+sustain.ipmi.power.load-50|W|lower|ipmitool|bmc power 50% load|Average system power from the BMC at 50% CPU load (stress-ng --cpu-load 50), last 10 of 15 minutes
+sustain.ipmi.power.full|W|lower|ipmitool|bmc power full load|Average system power from the BMC over the last 5 minutes of the full load
+sustain.ipmi.fan.peak|RPM|none|ipmitool|fan speed peak|Highest fan speed reported by the BMC at the end of the full load (context, not scored)
 burnin.errors|count|lower|stressapptest, fio|burn-in errors ({x}s)|Errors found by the burn-in (memory, disk verify, kernel log)
 info.cpu.steal.avg|%|none|mpstat|cpu steal avg|Average CPU steal during the whole run (context, not scored)
 info.cpu.steal.peak|%|none|mpstat|cpu steal max|Highest CPU steal sample during the run (context, not scored)

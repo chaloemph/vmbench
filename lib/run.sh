@@ -57,6 +57,7 @@ detach_run() {
     echo "# written by vmbench run (the detach option): the settings of the run that tmux session '$name' starts"
     for v in LABEL OUT QUICK ROUNDS MEM_ROUNDS WEB_ROUNDS DISK_ROUNDS PG_ROUNDS PG_SCALE CB DATA_DIR FIO_SIZE RAW_DEV DB_DIR WAL_DIR PEER \
              BURNIN_HOURS PGPORT PGDATABASE PGHOST PGUSER CONFIRM_WIPE STREAM_C STREAM_URL STREAM_SKIP_CHECK \
+             NVME_DEVS SUSTAIN_MINUTES SUSTAIN_50_MINUTES TJMAX \
              STREAM_CACHE_DIR VMBENCH_LANG VMBENCH_PROG HOME PATH; do
       [ -n "${!v+x}" ] && printf 'export %s=%q\n' "$v" "${!v}"
     done
@@ -88,6 +89,9 @@ cmd_run() {
   [ -z "${WEB_ROUNDS:-}" ] || positive_int WEB_ROUNDS "$WEB_ROUNDS"
   [ -z "${DISK_ROUNDS:-}" ] || positive_int DISK_ROUNDS "$DISK_ROUNDS"
   [ -z "${PG_ROUNDS:-}" ] || positive_int PG_ROUNDS "$PG_ROUNDS"
+  [ -z "${SUSTAIN_MINUTES:-}" ] || positive_int SUSTAIN_MINUTES "$SUSTAIN_MINUTES"
+  [ -z "${SUSTAIN_50_MINUTES:-}" ] || positive_int SUSTAIN_50_MINUTES "$SUSTAIN_50_MINUTES"
+  [ -z "${TJMAX:-}" ] || positive_int TJMAX "$TJMAX"
   [ "$QUICK" != 1 ] || [ -n "$rounds_given" ] || ROUNDS=1   # a smoke run is one round unless rounds were asked for
   ROUNDS=${ROUNDS:-3}
   MEM_ROUNDS=${MEM_ROUNDS:-$ROUNDS}
@@ -102,6 +106,9 @@ cmd_run() {
   WAL_DIR=${WAL_DIR:-$DATA_DIR}
   PEER=${PEER:-}
   BURNIN_HOURS=${BURNIN_HOURS:-48}
+  NVME_DEVS=${NVME_DEVS:-}
+  SUSTAIN_MINUTES=${SUSTAIN_MINUTES:-30}
+  SUSTAIN_50_MINUTES=${SUSTAIN_50_MINUTES:-15}
   export PGPORT=${PGPORT:-5433} PGDATABASE=${PGDATABASE:-bench}
   OUT=${OUT:-$HOME/bench-results/$LABEL-$(date +%Y%m%d-%H%M%S)}
   [ "$QUICK" = 1 ] && FIO_SIZE=256M

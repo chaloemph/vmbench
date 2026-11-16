@@ -32,6 +32,8 @@ export VMBENCH_HOME
 . "$VMBENCH_HOME/lib/metrics.sh"
 # shellcheck source=lib/stream.sh
 . "$VMBENCH_HOME/lib/stream.sh"
+# shellcheck source=lib/hw.sh
+. "$VMBENCH_HOME/lib/hw.sh"
 # shellcheck source=lib/stages.sh
 . "$VMBENCH_HOME/lib/stages.sh"
 # shellcheck source=lib/preflight.sh

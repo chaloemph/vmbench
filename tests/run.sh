@@ -26,6 +26,9 @@ echo
 echo "== stream"
 bash tests/test_stream.sh || status=1
 echo
+echo "== bare metal (nvme, sustain, burnin counters, hardware.txt)"
+bash tests/test_hw.sh || status=1
+echo
 echo "== get.sh"
 bash tests/test_get.sh || status=1
 echo

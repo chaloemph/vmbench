@@ -16,7 +16,7 @@ as cpu.sysbench.prime.1t (see docs/tests.md). Result folders from before the ids
 Run metadata comes from meta.json when the folder has one, otherwise from info.txt.
 Marks:  * measured once, so its variation is unknown    ! CV of 5% or more
 
-Compare verdicts: lower is better for ns/us/ms, error counts and packet loss; higher is better
+Compare verdicts: lower is better for ns/us/ms, error counts, packet loss and power (W); higher is better
 otherwise. A difference within the larger CV of the two runs, or within 1%, is not called a win.
 """
 import argparse
@@ -36,8 +36,9 @@ HIGH_STEAL = 1.0    # % - average CPU steal worth warning about
 
 INFO_SECTION = "info"   # key of the context section; its title comes from the catalog (section.info)
 # the first part of an id is its stage; this is also the order of the sections in the tables
-STAGE_SECTIONS = collections.OrderedDict([("cpu", "CPU"), ("mem", "Memory"), ("disk", "Disk"), ("pg", "PostgreSQL"),
-                                          ("net", "Network"), ("web", "Web"), ("burnin", "Burn-in"),
+STAGE_SECTIONS = collections.OrderedDict([("cpu", "CPU"), ("mem", "Memory"), ("disk", "Disk"), ("nvme", "NVMe"),
+                                          ("pg", "PostgreSQL"), ("net", "Network"), ("web", "Web"),
+                                          ("sustain", "Sustained load"), ("burnin", "Burn-in"),
                                           ("info", INFO_SECTION)])
 # row ranges of the old numeric format, only used to place rows without a LEGACY entry in a stage
 LEGACY_STAGES = [("cpu", 0, 23), ("mem", 24, 32), ("disk", 33, 46), ("pg", 47, 49),
@@ -101,6 +102,28 @@ LEGACY = [
     ("info", r"cpu steal avg", "info.cpu.steal.avg"),
     ("info", r"cpu steal max", "info.cpu.steal.peak"),
     ("info", r"fio fill write 1M", "info.fio.fill-write-1m"),
+    # ids added after the numeric format was retired: no old file has them, the row key only orders the tables
+    ("mem", r"stream triad cross-numa", "mem.stream.triad.cross-numa"),
+    ("nvme", r"nvme randread 4k qd32x4 all disks", "nvme.fio.randread-4k.qd32x4.all-disks"),
+    ("nvme", r"nvme seq read 1M all disks", "nvme.fio.seq-read-1m.all-disks"),
+    ("nvme", r"nvme randwrite 4k qd32x4 per disk", "nvme.fio.randwrite-4k.qd32x4.per-disk"),
+    ("nvme", r"nvme randread 4k qd1 p99 per disk", "nvme.fio.randread-4k.qd1.p99.per-disk"),
+    ("nvme", r"nvme randread 4k qd1 p99\.9 per disk", "nvme.fio.randread-4k.qd1.p999.per-disk"),
+    ("nvme", r"nvme randread 4k qd32x4 per disk", "nvme.fio.randread-4k.qd32x4.per-disk"),
+    ("nvme", r"nvme mixed 70/30 read per disk", "nvme.fio.mixed-70-30-4k.read.per-disk"),
+    ("nvme", r"nvme mixed 70/30 write per disk", "nvme.fio.mixed-70-30-4k.write.per-disk"),
+    ("nvme", r"nvme seq read 1M per disk", "nvme.fio.seq-read-1m.per-disk"),
+    ("nvme", r"nvme seq write 1M per disk", "nvme.fio.seq-write-1m.per-disk"),
+] + [("nvme", rf"nvme randread 4k qd{q} x4 per disk", f"nvme.fio.randread-4k.sweep-qd{q}.per-disk") for q in (1, 4, 16, 32, 64, 128)] + [
+    ("pg", r"pgbench tpcb-like tps per watt", "pg.pgbench.tpcb.tps-per-watt"),
+    ("sustain", r"all-core clock under load", "sustain.stress-ng.all-core-mhz.max"),
+    ("sustain", r"pkg temp peak", "sustain.turbostat.pkg-temp.peak"),
+    ("sustain", r"thermal headroom", "sustain.turbostat.thermal-headroom"),
+    ("sustain", r"pkg watt full load", "sustain.turbostat.pkg-watt.full"),
+    ("sustain", r"bmc power idle", "sustain.ipmi.power.idle"),
+    ("sustain", r"bmc power 50% load", "sustain.ipmi.power.load-50"),
+    ("sustain", r"bmc power full load", "sustain.ipmi.power.full"),
+    ("sustain", r"fan speed peak", "sustain.ipmi.fan.peak"),
 ]
 VARIANTS = ("1t", "max")
 
@@ -279,9 +302,9 @@ def section_title(section):
 
 def direction(metric, unit):
     """+1 higher is better, -1 lower is better, 0 not a performance value."""
-    if unit in ("flag",) or metric.startswith(("cpu steal", "fio fill")):
+    if unit in ("flag", "RPM") or metric.startswith(("cpu steal", "fio fill", "pkg temp")):
         return 0
-    if unit in ("ns", "us", "ms", "count") or "lost" in metric:
+    if unit in ("ns", "us", "ms", "count", "W") or "lost" in metric:
         return -1
     return 1
 
