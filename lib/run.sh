@@ -100,6 +100,8 @@ cmd_run() {
     XLSX=1; XLSX_LAYOUT=$(readlink -f -- "$XLSX_LAYOUT" 2>/dev/null || printf '%s' "$XLSX_LAYOUT")
   fi
   XLSX=${XLSX:-0}
+  case ${NOTIFY:-} in ""|0|1) ;; *) die "NOTIFY needs 1 or 0, got '$NOTIFY'" ;; esac
+  NOTIFY=${NOTIFY:-0}
   [ "$QUICK" != 1 ] || [ -n "$rounds_given" ] || ROUNDS=1   # a smoke run is one round unless rounds were asked for
   ROUNDS=${ROUNDS:-3}
   MEM_ROUNDS=${MEM_ROUNDS:-$ROUNDS}
@@ -261,5 +263,15 @@ PY
   log "done. results: $OUT"
   log "  summary.tsv (median per metric), results.tsv (every value), status.tsv (OK/FAIL/SKIP per step), meta.json, info.txt, raw logs"
   grep -E 'FAIL' "$STATUS" | sed 's/^/  /'
+  # NOTIFY=1: the summary, report.md and review.xlsx to Telegram, also when steps failed; a failure is only logged
+  if [ "$NOTIFY" = 1 ]; then
+    local files=()
+    for f in "$OUT/report.md" "$OUT/review.xlsx"; do [ -f "$f" ] && files+=("$f"); done
+    if ( cmd_notify --summary "$OUT" "${files[@]+"${files[@]}"}" ) 2>&1 | tee -a "$OUT/run.log"; [ "${PIPESTATUS[0]}" = 0 ]; then
+      log "notify: sent to Telegram"
+    else
+      log "[WARN] notify: sending to Telegram failed (see above); the results are complete"
+    fi
+  fi
   true
 }

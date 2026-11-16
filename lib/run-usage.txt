@@ -53,5 +53,7 @@ Settings (environment variables):
   PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench, from setup-postgres-bench.sh)
   XLSX         1 = also write review.xlsx (vmbench report xlsx) at the end; needs python3-openpyxl (default: 0)
   XLSX_LAYOUT  layout.tsv for review.xlsx (see vmbench report layout); implies XLSX=1
+  NOTIFY       1 = send a summary, report.md and review.xlsx to Telegram at the end (vmbench notify; needs curl, jq,
+               TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or ~/.config/vmbench/notify.env, which --detach requires)
   PEER         same as --peer
   BURNIN_HOURS same as --hours
