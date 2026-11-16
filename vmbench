@@ -12,6 +12,9 @@
 #   vmbench report layout                   print a starting layout.tsv for --layout (every metric ID)
 #                                           (all four: --lang th or VMBENCH_LANG=th for Thai text, English by default)
 #   vmbench setup cpubench|postgres         download cpubench / create the PostgreSQL cluster for the pg stage
+#   vmbench notify [--text T | --summary DIR] [FILE..]   send a message and files to Telegram (curl, jq;
+#                                           TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID or ~/.config/vmbench/notify.env)
+#   vmbench notify --check                  check the bot and the chat before a long run (sends nothing)
 #   vmbench version                         print the version
 #   vmbench help                            this text
 #
@@ -47,6 +50,8 @@ export VMBENCH_HOME
 . "$VMBENCH_HOME/lib/status.sh"
 # shellcheck source=lib/run.sh
 . "$VMBENCH_HOME/lib/run.sh"
+# shellcheck source=lib/notify.sh
+. "$VMBENCH_HOME/lib/notify.sh"
 
 main_usage() { sed -n '2,/^set -uo/{/^set -uo/d;s/^# \{0,1\}//;p}' "$VMBENCH_HOME/vmbench"; }
 
@@ -83,8 +88,9 @@ case $cmd in
   status) cmd_status "$@" ;;
   report) cmd_report "$@" ;;
   setup) cmd_setup "$@" ;;
+  notify) cmd_notify "$@" ;;
   version|--version|-V) echo "vmbench $(vmbench_version)" ;;
   help|--help|-h) main_usage ;;
   "") main_usage >&2; exit 2 ;;
-  *) die "unknown command '$cmd' (run, list, status, report, setup, version, help)" ;;
+  *) die "unknown command '$cmd' (run, list, status, report, setup, notify, version, help)" ;;
 esac
