@@ -34,7 +34,7 @@ cmp -s "$TMP/a/vmbench-$TAG.tar.gz" "$TMP/c/vmbench-v0.0.0-other.tar.gz" && chec
 
 list=$(tar -tzf "$TMP/a/vmbench-$TAG.tar.gz")
 [ "$(printf '%s\n' "$list" | cut -d/ -f1 | sort -u)" = "vmbench-$TAG" ] && check "one top folder vmbench-<tag>/" 0 || check "one top folder vmbench-<tag>/" 1
-for f in vmbench get.sh VERSION lib/common.sh stages/cpu.sh report.py hw.py xlsx.py README.md LICENSE; do
+for f in vmbench get.sh VERSION lib/common.sh lib/notify.sh stages/cpu.sh report.py hw.py xlsx.py README.md LICENSE; do
   printf '%s\n' "$list" | grep -qx "vmbench-$TAG/$f" && check "tarball contains $f" 0 || check "tarball contains $f" 1
 done
 printf '%s\n' "$list" | grep -Eq "^vmbench-$TAG/(tests|\.github)(/|$)" && check "tarball leaves out tests/ and .github/" 1 || check "tarball leaves out tests/ and .github/" 0
