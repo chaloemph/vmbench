@@ -57,7 +57,7 @@ detach_run() {
     echo "# written by vmbench run (the detach option): the settings of the run that tmux session '$name' starts"
     for v in LABEL OUT QUICK ROUNDS MEM_ROUNDS WEB_ROUNDS DISK_ROUNDS PG_ROUNDS PG_SCALE CB DATA_DIR FIO_SIZE RAW_DEV DB_DIR WAL_DIR PEER \
              BURNIN_HOURS PGPORT PGDATABASE PGHOST PGUSER CONFIRM_WIPE STREAM_C STREAM_URL STREAM_SKIP_CHECK \
-             NVME_DEVS SUSTAIN_MINUTES SUSTAIN_50_MINUTES TJMAX \
+             NVME_DEVS SUSTAIN_MINUTES SUSTAIN_50_MINUTES TJMAX XLSX XLSX_LAYOUT NOTIFY \
              STREAM_CACHE_DIR VMBENCH_LANG VMBENCH_PROG HOME PATH; do
       [ -n "${!v+x}" ] && printf 'export %s=%q\n' "$v" "${!v}"
     done
@@ -92,6 +92,14 @@ cmd_run() {
   [ -z "${SUSTAIN_MINUTES:-}" ] || positive_int SUSTAIN_MINUTES "$SUSTAIN_MINUTES"
   [ -z "${SUSTAIN_50_MINUTES:-}" ] || positive_int SUSTAIN_50_MINUTES "$SUSTAIN_50_MINUTES"
   [ -z "${TJMAX:-}" ] || positive_int TJMAX "$TJMAX"
+  # review.xlsx at the end (xlsx.py): XLSX=1, or XLSX_LAYOUT=FILE (which implies XLSX=1); the path is made absolute
+  # here, so a detached run (which starts in the same folder anyway) and the log name the same file
+  case ${XLSX:-} in ""|0|1) ;; *) die "XLSX needs 1 or 0, got '$XLSX'" ;; esac
+  if [ -n "${XLSX_LAYOUT:-}" ]; then
+    [ "${XLSX:-}" = 0 ] && die "XLSX_LAYOUT is set but XLSX=0: unset one of them"
+    XLSX=1; XLSX_LAYOUT=$(readlink -f -- "$XLSX_LAYOUT" 2>/dev/null || printf '%s' "$XLSX_LAYOUT")
+  fi
+  XLSX=${XLSX:-0}
   [ "$QUICK" != 1 ] || [ -n "$rounds_given" ] || ROUNDS=1   # a smoke run is one round unless rounds were asked for
   ROUNDS=${ROUNDS:-3}
   MEM_ROUNDS=${MEM_ROUNDS:-$ROUNDS}
@@ -173,6 +181,11 @@ cmd_run() {
       problems_found=1
     done
   done
+  check_reports
+  for p in "${PROBLEMS[@]+"${PROBLEMS[@]}"}"; do
+    printf 'not ready: report: %s\n' "$p" >&2
+    problems_found=1
+  done
   [ "$problems_found" = 0 ] || die "nothing was run; fix the above or leave those stages out"
   if [ -n "$DETACH" ]; then
     # nothing has run yet: when the arguments came from STAGES, pass the selection on explicitly
@@ -235,6 +248,14 @@ PY
   REPORT=$VMBENCH_HOME/report.py
   if [ -f "$REPORT" ] && need python3; then
     python3 -I "$REPORT" show "$OUT" || log "report.py failed; the raw results are still in $OUT"
+  fi
+  # review.xlsx (XLSX=1 / XLSX_LAYOUT): a failure is logged, the run is still done
+  if [ "$XLSX" = 1 ]; then
+    if python3 -I "$VMBENCH_HOME/xlsx.py" "$OUT" -o "$OUT/review.xlsx" ${XLSX_LAYOUT:+--layout "$XLSX_LAYOUT"} 2>&1 | tee -a "$OUT/run.log"; [ "${PIPESTATUS[0]}" = 0 ]; then
+      log "review.xlsx: $OUT/review.xlsx"
+    else
+      log "[WARN] xlsx.py failed, no review.xlsx; report.md and the raw results are complete"
+    fi
   fi
 
   log "done. results: $OUT"
