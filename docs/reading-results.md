@@ -8,7 +8,8 @@ It does not give pass/fail thresholds. Whether a number is "enough" depends on y
 
 - [How to read a report](#how-to-read-a-report)
 - [Ideas that apply to every stage](#ideas-that-apply-to-every-stage)
-- [cpu](#cpu) · [mem](#mem) · [disk](#disk) · [pg](#pg) · [net](#net) · [web](#web) · [burnin](#burnin) · [info (context)](#info-context)
+- [cpu](#cpu) · [mem](#mem) · [disk](#disk) · [nvme](#nvme) · [pg](#pg) · [net](#net) · [web](#web) · [sustain](#sustain) · [burnin](#burnin) · [info (context)](#info-context)
+- [The bare-metal checklist](#the-bare-metal-checklist)
 - [Which values matter for which workload](#which-values-matter-for-which-workload)
 
 ## How to read a report
@@ -39,7 +40,7 @@ Always read the warnings at the top of a report first. Different vmbench or cpub
 
 **`1t` and `max` answer different questions.** `1t` (one thread) shows how fast a single task runs, which bounds the response time of anything that cannot be split, such as one database query or one request. `max` (all vCPUs) shows the total capacity when many tasks run at once. The ratio `max / 1t` shows how well the machine scales across its vCPUs: well below the vCPU count can point to shared physical cores, thermal or power limits, or memory bandwidth limits.
 
-**Higher is better unless the unit is a time or a count of bad events.** `ns`, `us`, `ms`, `count` and packet loss are lower-is-better; everything else is higher-is-better. The report already applies this.
+**Higher is better unless the unit is a time, a count of bad events or power.** `ns`, `us`, `ms`, `count`, packet loss and `W` are lower-is-better; everything else is higher-is-better. The report already applies this.
 
 **A VM shows the hypervisor as much as the hardware.** Disk results include the host's cache and storage settings, CPU results depend on the CPU model exposed to the guest, and other VMs on the same host take time away from yours (CPU steal). A large gap between two VMs can come from configuration rather than from the hardware.
 
@@ -84,6 +85,7 @@ Measures how fast the vCPUs can move data to and from RAM, and how long one memo
 | `mem.stream.triad.max` | higher | Memory bandwidth with all vCPUs, doing a read-read-write pattern (`a = b + s * c`). The usual single number for "how much data per second can this machine stream through RAM". Matters for scans, analytics, compression of large data and in-memory databases. |
 | `mem.stream.copy.max` | higher | Memory bandwidth for plain copying. Close to the cost of moving buffers around (network and storage stacks, large memory copies). |
 | `mem.lmbench.lat-mem-rd.1t` | lower | Time for one memory load when the data is not in the CPU cache (largest working set, one process). Matters for workloads that follow pointers: hash tables, B-trees, linked structures, interpreters. Lower latency makes each such step faster even when bandwidth is not used up. |
+| `mem.stream.triad.cross-numa` | higher | STREAM triad again, but with the CPUs of NUMA node 0 reading memory that belongs to node 1 (only on machines with two or more nodes). Compare it with `mem.stream.triad.max`: a large drop is the price of a process whose memory ended up on the other socket. It shows how much NUMA placement matters on this machine, for databases and JVMs that are not pinned. |
 
 How to read the mem group:
 
@@ -150,6 +152,25 @@ How to read the disk group:
 - `disk.fio.randwrite-4k.steadystate` is a flag, not a score: 1 means fio detected that random-write performance had settled. With 0, the random-write value may still have been changing.
 - Disk values are measured once by default. Use `--disk-rounds N` before making a decision based on a small difference.
 
+## nvme
+
+Runs only on bare metal with `NVME_DEVS` (the disks are erased). It answers two questions a server acceptance test asks: what the whole set of disks delivers together, and whether every disk is as good as the others.
+
+**All disks at once** (the total the machine can deliver; one fio job per disk in the same run):
+
+| ID | Better | What it means in practice |
+|---|---|---|
+| `nvme.fio.randread-4k.qd32x4.all-disks` | higher | Random 4 KiB read IOPS added up over all the disks. The ceiling for a database or object store that spreads its data over every disk. If it is much less than the sum of the per-disk values, the disks share a bottleneck (PCIe lanes, a switch, the CPU's I/O capacity). |
+| `nvme.fio.seq-read-1m.all-disks` | higher | Sequential read bandwidth (GB/s) over all the disks. Backup, restore and scan speed when every disk is read at once. |
+
+**Each disk on its own** (`nvme.*.per-disk`; one row per disk, so the report shows the **median over the disks** and the CV says how alike they are): `nvme.fio.randwrite-4k.qd32x4.per-disk` (10 minutes of random write, so a fresh disk has left its fast initial state), `nvme.fio.randread-4k.qd1.p99.per-disk` and `nvme.fio.randread-4k.qd1.p999.per-disk` (single-request latency tail), `nvme.fio.randread-4k.qd32x4.per-disk`, `nvme.fio.mixed-70-30-4k.read.per-disk` and `nvme.fio.mixed-70-30-4k.write.per-disk`, `nvme.fio.seq-read-1m.per-disk`, `nvme.fio.seq-write-1m.per-disk`, and the queue-depth sweep `nvme.fio.randread-4k.sweep-qd{1,4,16,32,64,128}.per-disk`. They mean the same as the `disk.fio.*` values of the same name, measured on a raw disk.
+
+How to read the nvme group:
+
+- A `!` (CV of 5% or more) on a per-disk value means the disks are not alike. `nvme-per-disk.tsv` names the slow one; check its firmware (`nvme-devices.txt`), its slot and its temperature before accepting the machine.
+- Compare per-disk values only between disks of the same model and firmware. Two vendors with different disks are being compared on their disk choice, not on the server.
+- The all-disk total divided by the disk count, against the per-disk median, shows whether the disks can all be busy at the same time.
+
 ## pg
 
 Runs PostgreSQL's own benchmark (pgbench, a TPC-B-like workload of small read-write transactions) on a dedicated cluster. It combines CPU, memory and especially commit latency into numbers that are close to a real OLTP application.
@@ -159,6 +180,7 @@ Runs PostgreSQL's own benchmark (pgbench, a TPC-B-like workload of small read-wr
 | `pg.pgbench.tpcb.tps` | higher | Transactions per second with 2 × vCPU clients. The write-heavy capacity of the machine as a database server. |
 | `pg.pgbench.tpcb.stability` | higher | How steady TPS stayed over 10 minutes: 100 means perfectly flat. Low values mean periodic stalls, typically from checkpoints or from the storage pausing, which users notice as slow periods. |
 | `pg.pgbench.latency.single` | lower | Average transaction time with one client. Shows the cost of one transaction on its own, mostly CPU speed plus commit latency. Matters for applications that run their database work one step at a time. |
+| `pg.pgbench.tpcb.tps-per-watt` | higher | The TPC-B TPS divided by the system power the BMC reported during that run (only with `ipmitool` as root on bare metal). Performance per watt: the number behind an electricity line in a cost comparison. Compare it only between runs with the same `PG_SCALE` and the same settings, and remember that the BMC's reading is the whole server, not the CPU alone. |
 
 How to read the pg group:
 
@@ -199,15 +221,32 @@ How to read the web group:
 - The rate rises in fixed steps, so values are rounded to a step and the CV is often 0%. A CV of 0% here does not prove the machine is perfectly steady.
 - Because the load generator shares the vCPUs with the server, it can run out of CPU first. The run log reminds you to check this in the cpubench CPU logs saved in the result folder; if the load generator was the limit, the value is a lower bound for the server.
 
+## sustain
+
+A long all-core load (30 minutes by default). Short benchmarks run at turbo clocks; a machine that is busy for hours runs at the clock its cooling and power limits allow. This stage measures that clock, and what the machine draws and how hot it gets while doing it.
+
+| ID | Better | What it means in practice |
+|---|---|---|
+| `sustain.stress-ng.all-core-mhz.max` | higher | The average clock of all cores over the last 5 minutes of the load, once temperatures have settled. This is the speed every `max` CPU value really runs at under a long batch job. Two machines with the same CPU model can differ here because of cooling, power limits or BIOS profile. `sustain.txt` says whether it came from turbostat (exact) or from the kernel's view (a VM may show a fixed nominal value, which means nothing). |
+| `sustain.turbostat.pkg-temp.peak` | context | The hottest the CPU package got. Not judged by itself: a hot CPU that keeps its clock is fine, a cool one that throttles is not. |
+| `sustain.turbostat.thermal-headroom` | higher | Tjmax minus that peak: how many degrees are left before the CPU must throttle. A small headroom at a 24 °C inlet means throttling on a hot day or with a failed fan. |
+| `sustain.turbostat.pkg-watt.full` | lower | CPU package power (RAPL) under the load. Lower at the same clock is a more efficient part. |
+| `sustain.ipmi.power.idle` | lower | Whole-server power from the BMC while idle. Idle servers are common, so this drives the electricity bill more than people expect. |
+| `sustain.ipmi.power.load-50` | lower | Whole-server power at 50% CPU load, the usual operating point of a loaded but not saturated machine; the number to use in a TCO calculation. |
+| `sustain.ipmi.power.full` | lower | Whole-server power under the full load: the rack power and cooling you must provision for. |
+| `sustain.ipmi.fan.peak` | context | The fastest fan at the end of the full load. Near the fan's maximum means no cooling reserve. |
+
+The BMC's power reading is the server's own meter; for a procurement it is usually cross-checked against a PDU over the same minutes. Without a BMC (a VM, or no `ipmitool` as root) the power values are skipped and only the clock is recorded.
+
 ## burnin
 
 Runs a long stress test (default 48 hours) on memory and disk to find hardware or configuration faults, not to measure speed.
 
 | ID | Better | What it means in practice |
 |---|---|---|
-| `burnin.errors` | lower (0) | The number of problems found: stressapptest not passing, fio data verification failures, and new error lines in the kernel log. Anything other than 0 means the machine is not safe to trust with data until the cause is found. |
+| `burnin.errors` | lower (0) | The number of problems found: stressapptest not passing, fio data verification failures, new error lines in the kernel log, and every error counter that grew during the run (EDAC memory errors, new BMC event log entries, NVMe media errors and error-log entries of the tested disks). Anything other than 0 means the machine is not safe to trust with data until the cause is found. |
 
-The details of each error are in `burnin.err`, `stressapptest.log` and `dmesg-errors.txt` in the result folder.
+The details of each error are in `burnin.err`, `stressapptest.log`, `dmesg-errors.txt` and `burnin-checks.txt` (the counters before and after, and which ones grew) in the result folder. With `NVME_DEVS` the disk verification runs on every listed disk at once.
 
 ## info (context)
 
@@ -230,3 +269,21 @@ A starting point for choosing what to look at first. Every workload also depends
 | Caches and in-memory stores | `mem.lmbench.lat-mem-rd.1t`, `cpu.cpubench.int.hashmap.*`, net latency |
 | File, backup and storage servers | `disk.fio.seq-read-1m`, `disk.fio.seq-write-1m`, `net.iperf3.tcp.bidir`, `disk.wal.fdatasync.avg` if clients wait for durable writes |
 | Any machine that will hold important data | `burnin.errors` = 0 |
+| Bare-metal servers under evaluation | `sustain.stress-ng.all-core-mhz.max`, `sustain.ipmi.power.load-50`, the `nvme.*.all-disks` totals and the CV of the `nvme.*.per-disk` values, `pg.pgbench.tpcb.tps-per-watt`, `burnin.errors` = 0, and `hardware.txt` diffed against the vendor's data sheet |
+
+## The bare-metal checklist
+
+vmbench was written for VMs. On a physical server the same run also records what a hardware acceptance checklist asks for, and the pieces that are not measurements go into files instead of IDs:
+
+| Checklist item | Where it is |
+|---|---|
+| CPU model, stepping, microcode; BIOS and BMC firmware versions; frequency driver, governor, turbo, C-states, SMT | `hardware.txt` (`lscpu`, `/sys/class/dmi/id`, `cpupower`, `dmidecode -t bios` and `ipmitool mc info` as root) |
+| DIMM count, size and configured speed, every channel populated | `hardware.txt` (`dmidecode -t memory` as root, else the EDAC view) |
+| NIC model, driver, firmware, offloads | `hardware.txt` (`ethtool -i`, `ethtool -k`, `lspci`) |
+| Disk model and firmware, how many of each | `hardware.txt`, `nvme-devices.txt` |
+| Sustained all-core clock, thermal headroom, power at idle / 50% / full load, fan speed | the `sustain.*` values |
+| Performance per watt | `pg.pgbench.tpcb.tps-per-watt` |
+| Every NVMe at once, each NVMe alone | the `nvme.*` values |
+| 48 hour burn-in with memory, disk, BMC and NVMe error counters | `burnin.errors`, `burnin-checks.txt` |
+
+Not covered, because they need the real application, a PDU or hands on the machine: application-level transaction tests (Node.js, Go, PHP, Python stacks), PDU readings, a BIOS export through Redfish, and the PSU failover test.

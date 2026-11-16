@@ -1,4 +1,4 @@
-@NAME@ - run the VM performance tests (cpu, mem, disk, pg, net, web, burn-in) on this machine and collect the results.
+@NAME@ - run the performance tests (cpu, mem, disk, nvme, pg, net, web, sustain, burn-in) on this machine and collect the results.
 
   @CMD@                       # cpu, mem, disk; results in ~/bench-results/<label>-<time>/
   @CMD@ --with web,pg         # the default stages plus web and pg
@@ -7,6 +7,8 @@
   @CMD@ --rounds 5            # cpu, mem and web repeat 5 times instead of 3
   @CMD@ --detach              # start in a tmux session and return; follow with: vmbench status
   @CMD@ --only burnin --hours 48
+  NVME_DEVS="nvme1n1 nvme2n1" CONFIRM_WIPE=yes @CMD@ --only nvme     # bare metal: every NVMe at once, then each (ERASES them)
+  @CMD@ --only sustain        # 30 min all-core load: clock, temperature, power (turbostat, ipmitool as root)
   QUICK=1 @CMD@               # smoke run: tiny sizes and durations, to check the setup
 
 Options:
@@ -43,6 +45,10 @@ Settings (environment variables):
   DATA_DIR     folder for fio test files                     (default: ~/bench-data)
   FIO_SIZE     size of the fio test file                     (default: 8G)
   RAW_DEV      raw test disk, e.g. /dev/sdb (needs CONFIRM_WIPE=yes, ERASES THE WHOLE DISK)
+  NVME_DEVS    disks of the nvme stage (and burnin), e.g. "nvme1n1 nvme2n1" (needs CONFIRM_WIPE=yes, ERASES THEM ALL;
+               never the OS disk: a disk with a filesystem, mount or partitions is refused)
+  SUSTAIN_MINUTES SUSTAIN_50_MINUTES  full-load and 50%-load minutes of the sustain stage (default: 30, 15)
+  TJMAX        Tjmax in C for the thermal headroom, when turbostat does not print it (AMD, ARM)
   DB_DIR WAL_DIR  folders for disk.fio.db-* and disk.wal.*           (default: DATA_DIR; e.g. /pgdata /pgwal)
   PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench, from setup-postgres-bench.sh)
   PEER         same as --peer

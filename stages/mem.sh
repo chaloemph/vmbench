@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# stages/mem.sh - STREAM bandwidth and lmbench lat_mem_rd latency, repeated MEM_ROUNDS times
+# stages/mem.sh - STREAM bandwidth and lmbench lat_mem_rd latency, repeated MEM_ROUNDS times. On a machine with two
+# or more NUMA nodes, STREAM triad is also run with the CPUs of node 0 on the memory of node 1 (cross-NUMA bandwidth).
 # Sourced by lib/stages.sh, never executed. Functions (see lib/stages.sh for the contract):
 #   stage_mem_order, _default, _time, _note, _check, _run
 # Metric ids: mem.* (the table is in lib/metrics.sh)
@@ -39,6 +40,11 @@ stage_mem_run() {
       stream_ok=1
     else bad mem "compile stream" "see stream-build.log"; fi
   elif [ "$fetched" = 1 ]; then skip mem stream "gcc missing"; fi
+  # cross-NUMA: the CPUs of node 0 reading the memory of node 1, only with two or more nodes and numactl
+  local nodes=0 n0cpus=""
+  if need numactl; then
+    nodes=$(numactl -H 2>/dev/null | awk '/^available:/{print $2+0}'); n0cpus=$(numactl -H 2>/dev/null | awk '/^node 0 cpus:/{print NF-3}')
+  fi
   lat=$(dpkg -L lmbench 2>/dev/null | grep -m1 'lat_mem_rd$')
   [ -z "$lat" ] || mb=$(awk -v m="$MEM_AVAIL_KB" -v q="$QUICK" 'BEGIN{x=int(m/1024*0.30); lim=(q==1)?64:2048; if(x>lim)x=lim; print x}')
   [ -n "$lat" ] || skip mem lat_mem_rd "lmbench not installed"
@@ -50,6 +56,11 @@ stage_mem_run() {
       cp=$(awk '/^Copy:/{print $2}' "$OUT/stream-r$r.txt"); tr=$(awk '/^Triad:/{print $2}' "$OUT/stream-r$r.txt")
       [ -n "$tr" ] && rec mem.stream.triad.max "$tr" "$n" && ok mem "stream r$r" || bad mem "stream r$r"
       [ -n "$cp" ] && rec mem.stream.copy.max "$cp" "$n"
+      if [ "${nodes:-0}" -ge 2 ]; then
+        OMP_NUM_THREADS=${n0cpus:-$NPROC} OMP_PROC_BIND=spread OMP_PLACES=cores numactl --cpunodebind=0 --membind=1 "$OUT/stream" > "$OUT/stream-xnuma-r$r.txt" 2>&1
+        tr=$(awk '/^Triad:/{print $2}' "$OUT/stream-xnuma-r$r.txt")
+        [ -n "$tr" ] && rec mem.stream.triad.cross-numa "$tr" "$n" && ok mem "stream cross-numa r$r" || bad mem "stream cross-numa r$r" "see stream-xnuma-r$r.txt"
+      fi
     fi
     if [ -n "$lat" ]; then
       local v
@@ -58,6 +69,9 @@ stage_mem_run() {
       [ -n "$v" ] && rec mem.lmbench.lat-mem-rd.1t "$v" "$mb" && ok mem "lat_mem_rd r$r" || bad mem "lat_mem_rd r$r"
     fi
   done
+  if [ "$stream_ok" = 1 ] && [ "${nodes:-0}" -lt 2 ]; then
+    skip mem "stream cross-numa" "$(need numactl && echo "one NUMA node" || echo "numactl not installed")"
+  fi
   rm -f "$OUT/stream" "$src"
   # shellcheck disable=SC2034  # ROUND is read by rec (lib/metrics.sh)
   ROUND=1

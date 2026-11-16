@@ -6,6 +6,8 @@
 # Sourced by lib/stages.sh, never executed. Functions (see lib/stages.sh for the contract):
 #   stage_pg_order, _default, _time, _note, _check, _run, _rounds
 # Metric ids: pg.* (the table is in lib/metrics.sh)
+# With a BMC (ipmitool dcmi power reading as root), the system power is sampled during the TPC-B run and
+# pg.pgbench.tpcb.tps-per-watt is TPS / average W; the samples are in pg-power-tpcb.log (-rN for later rounds).
 # Files in the result folder: pg-settings.txt (server and pgbench version, every non-default setting and the ones that
 # matter for the result), pg-checkpoints.txt (checkpoints that happened during each measured run), pgbench-*.log (raw output; round 1
 # keeps the plain names, later rounds add -rN).
@@ -78,16 +80,26 @@ stage_pg_run() {
   log "pgbench scale $scale (~$(awk -v s="$scale" 'BEGIN{printf "%.0f", s*0.0157}') GB), free ${free} GB, -c $c -j $j, rounds ${PG_ROUNDS:-1}"
   pgbench -i -s "$scale" -I dtGvp > "$OUT/pgbench-init.log" 2>&1 || { bad pg "pgbench init" "see pgbench-init.log"; return; }
   ok pg "pgbench init"
+  local pw="" w; [ -n "$(power_reading)" ] && pw=1
+  [ -n "$pw" ] || log "pg: no BMC power reading (ipmitool dcmi power reading as root), tps-per-watt is not recorded"
   : > "$OUT/pg-checkpoints.txt"
   for r in $(seq 1 "${PG_ROUNDS:-1}"); do
     ROUND=$r; [ "${PG_ROUNDS:-1}" = 1 ] || log "pg round $r/$PG_ROUNDS"
     pg_checkpoint "warm-up"
     pgbench -c "$c" -j "$j" -T "$(T 60 5)" > "$OUT/$(pg_rep_name pgbench-warmup.log)" 2>&1
     f=$OUT/$(pg_rep_name pgbench-tpcb.log)
+    [ -n "$pw" ] && power_sampler_start "$OUT/$(pg_rep_name pg-power-tpcb.log)" "$(T 10 1)"
     pg_measured "tpcb" "$f" -c "$c" -j "$j" -T "$(T 600 10)" -P "$(T 10 2)"   # progress every 10 s (2 s in QUICK, so stability has samples)
+    [ -n "$pw" ] && power_sampler_stop
     tps=$(awk '/^tps =/{print $3}' "$f")
     if [ -n "$tps" ]; then
       rec pg.pgbench.tpcb.tps "$tps" "$c"
+      if [ -n "$pw" ]; then
+        w=$(power_avg "$OUT/$(pg_rep_name pg-power-tpcb.log)")
+        if [ -n "$w" ] && awk -v w="$w" 'BEGIN{exit !(w > 0)}'; then
+          rec pg.pgbench.tpcb.tps-per-watt "$(awk -v t="$tps" -v w="$w" 'BEGIN{printf "%.2f", t/w}')"; ok pg "tps per watt (avg ${w} W)"
+        else bad pg "tps per watt" "no power samples"; fi
+      fi
       awk '/^progress:/{v[++n]=$4} END{ if(n>1){ for(i=2;i<=n;i++){s+=v[i];q+=v[i]*v[i]} k=n-1; m=s/k; sd=sqrt(q/k-m*m); printf "%.2f\n", 100*(1-sd/m)} }' "$f" > "$OUT/.stab"
       [ -s "$OUT/.stab" ] && rec pg.pgbench.tpcb.stability "$(cat "$OUT/.stab")"; rm -f "$OUT/.stab"
       ok pg "pgbench tpcb"
