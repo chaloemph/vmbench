@@ -277,7 +277,7 @@
 | Cache และที่เก็บข้อมูลในหน่วยความจำ | `mem.lmbench.lat-mem-rd.1t`, `cpu.cpubench.int.hashmap.*`, latency ของเครือข่าย |
 | File, backup และ storage server | `disk.fio.seq-read-1m`, `disk.fio.seq-write-1m`, `net.iperf3.tcp.bidir`, `disk.wal.fdatasync.avg` ถ้า client รอให้การเขียนถาวร |
 | เครื่องใดก็ตามที่จะเก็บข้อมูลสำคัญ | `burnin.errors` = 0 |
-| เซิร์ฟเวอร์ bare metal ที่กำลังประเมิน | `sustain.stress-ng.all-core-mhz.max`, `sustain.ipmi.power.load-50`, ยอดรวม `nvme.*.all-disks` และ CV ของค่า `nvme.*.per-disk`, `pg.pgbench.tpcb.tps-per-watt`, `burnin.errors` = 0 และ `hardware.txt` เทียบกับ data sheet ของผู้ขาย |
+| เซิร์ฟเวอร์ bare metal ที่กำลังประเมิน | `sustain.stress-ng.all-core-mhz.max`, `sustain.ipmi.power.load-50`, ยอดรวม `nvme.*.all-disks` และ CV ของค่า `nvme.*.per-disk`, `pg.pgbench.tpcb.tps-per-watt`, `burnin.errors` = 0 และ `hardware.txt` (หรือ `hardware.json`) เทียบกับ data sheet ของผู้ขาย |
 
 <a id="the-bare-metal-checklist"></a>
 
@@ -291,9 +291,28 @@ vmbench เขียนขึ้นสำหรับ VM บนเครื่�
 | จำนวน DIMM ขนาดและความเร็วที่ตั้ง เสียบครบทุก channel | `hardware.txt` (`dmidecode -t memory` แบบ root ไม่ได้ก็ใช้มุมมอง EDAC) |
 | รุ่น NIC, driver, firmware, offload | `hardware.txt` (`ethtool -i`, `ethtool -k`, `lspci`) |
 | รุ่นและ firmware ของดิสก์ มีรุ่นละกี่ลูก | `hardware.txt`, `nvme-devices.txt` |
+| ทุกข้อข้างบนในรูปฟิลด์ (สำหรับ spreadsheet หรือสคริปต์) | `hardware.json` (ดูด้านล่าง) |
 | ความถี่ทุกคอร์ต่อเนื่อง, thermal headroom, กำลังไฟตอนว่าง / 50% / เต็ม, รอบพัดลม | ค่า `sustain.*` |
 | ประสิทธิภาพต่อวัตต์ | `pg.pgbench.tpcb.tps-per-watt` |
 | NVMe ทุกลูกพร้อมกัน และทีละลูก | ค่า `nvme.*` |
 | Burn-in 48 ชั่วโมง พร้อมตัวนับ error ของหน่วยความจำ ดิสก์ BMC และ NVMe | `burnin.errors`, `burnin-checks.txt` |
+
+### hardware.json
+
+stage `info` เก็บ output ดิบของทุกคำสั่งด้านฮาร์ดแวร์ไว้ใน `hw/` (`lscpu.txt`, `dmidecode-memory.txt`, `net-<interface>.txt`, ...) แล้ว `hw.py` แปลงเป็น `hardware.json` ทุก key ข้างล่างมีเสมอ ค่าที่อ่านไม่ได้เป็น `null` (หรือ list ว่าง) และ `unavailable` บอกเหตุผล (`dmidecode -t memory: needs root or sudo -n`, `cpufreq: not exposed by the kernel (usual in a VM)`) ไม่มี serial number, asset tag, UUID, ชื่อเครื่อง, MAC และ IP
+
+| Key | ฟิลด์ |
+|---|---|
+| `cpu` | `vendor`, `model`, `family`, `model_id`, `stepping` (ข้อความ: ARM เป็นแบบ `r3p1`), `microcode`, `sockets`, `cores_per_socket`, `threads_per_core`, `numa_nodes`, `mhz_min`, `mhz_max`, `cache` (`l1d`, `l1i`, `l2`, `l3` ตามที่ lscpu พิมพ์) |
+| `freq` | `driver`, `governor`, `min_khz`, `max_khz`, `scaling_min_khz`, `scaling_max_khz`, `turbo` (`on` / `off`), `smt`, `cpuidle_driver`, `cpuidle_governor` |
+| `system` | `sys_vendor`, `product_name`, `product_version`, `board_vendor`, `board_name`, `board_version`, `bios_vendor`, `bios_version`, `bios_date`, `bios_release`, `bmc` (`firmware`, `manufacturer`) |
+| `memory` | `slots`, `populated`, `dimms` (`locator`, `size_mb`, `type`, `speed_mts`, `configured_mts`, `manufacturer`, `part`), `configured_speeds` (`{"4800": 16}`), `source` (`dmidecode` หรือ `edac`) |
+| `nics` | หนึ่งรายการต่อ interface จริง: `name`, `state`, `speed_mbps`, `mtu`, `pci`, `model`, `driver`, `driver_version`, `firmware`, `offloads` (`{"tcp-segmentation-offload": "on"}` ไม่รวม feature ที่ fixed) |
+| `disks` | `name`, `model`, `firmware`, `size`, `tran`, `rota` |
+| `nvme`, `nvme_models` | `ctrl`, `model`, `firmware` ต่อ controller; จำนวน controller ของแต่ละรุ่น |
+| `bmc` | `power_w`, `temperatures` (`{sensor: C}`), `fans` (`{sensor: RPM}`) ตอนเริ่มรัน |
+| `unavailable` | สิ่งที่ไม่ได้บันทึก บรรทัดละเหตุผล |
+
+`hardware.txt` ยังเขียนเหมือนเดิม ไว้อ่านและ `diff` โฟลเดอร์ผลของรุ่นเก่าไม่มีทั้ง `hw/` และ `hardware.json`
 
 ที่ยังไม่ครอบคลุม เพราะต้องใช้แอปจริง PDU หรือคนอยู่หน้าเครื่อง: การทดสอบธุรกรรมระดับแอป (Node.js, Go, PHP, Python), ค่าจาก PDU, การ export BIOS ผ่าน Redfish และการทดสอบ PSU failover

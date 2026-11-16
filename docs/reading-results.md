@@ -269,7 +269,7 @@ A starting point for choosing what to look at first. Every workload also depends
 | Caches and in-memory stores | `mem.lmbench.lat-mem-rd.1t`, `cpu.cpubench.int.hashmap.*`, net latency |
 | File, backup and storage servers | `disk.fio.seq-read-1m`, `disk.fio.seq-write-1m`, `net.iperf3.tcp.bidir`, `disk.wal.fdatasync.avg` if clients wait for durable writes |
 | Any machine that will hold important data | `burnin.errors` = 0 |
-| Bare-metal servers under evaluation | `sustain.stress-ng.all-core-mhz.max`, `sustain.ipmi.power.load-50`, the `nvme.*.all-disks` totals and the CV of the `nvme.*.per-disk` values, `pg.pgbench.tpcb.tps-per-watt`, `burnin.errors` = 0, and `hardware.txt` diffed against the vendor's data sheet |
+| Bare-metal servers under evaluation | `sustain.stress-ng.all-core-mhz.max`, `sustain.ipmi.power.load-50`, the `nvme.*.all-disks` totals and the CV of the `nvme.*.per-disk` values, `pg.pgbench.tpcb.tps-per-watt`, `burnin.errors` = 0, and `hardware.txt` (or `hardware.json`) checked against the vendor's data sheet |
 
 ## The bare-metal checklist
 
@@ -281,9 +281,28 @@ vmbench was written for VMs. On a physical server the same run also records what
 | DIMM count, size and configured speed, every channel populated | `hardware.txt` (`dmidecode -t memory` as root, else the EDAC view) |
 | NIC model, driver, firmware, offloads | `hardware.txt` (`ethtool -i`, `ethtool -k`, `lspci`) |
 | Disk model and firmware, how many of each | `hardware.txt`, `nvme-devices.txt` |
+| All of the above as fields (for a spreadsheet or a script) | `hardware.json` (see below) |
 | Sustained all-core clock, thermal headroom, power at idle / 50% / full load, fan speed | the `sustain.*` values |
 | Performance per watt | `pg.pgbench.tpcb.tps-per-watt` |
 | Every NVMe at once, each NVMe alone | the `nvme.*` values |
 | 48 hour burn-in with memory, disk, BMC and NVMe error counters | `burnin.errors`, `burnin-checks.txt` |
+
+### hardware.json
+
+The `info` stage keeps the raw output of every hardware command in `hw/` (`lscpu.txt`, `dmidecode-memory.txt`, `net-<interface>.txt`, ...) and `hw.py` turns it into `hardware.json`. Every key below is always present; a value that could not be read is `null` (or an empty list), and `unavailable` says why (`dmidecode -t memory: needs root or sudo -n`, `cpufreq: not exposed by the kernel (usual in a VM)`). Serial numbers, asset tags, UUIDs, host names, MAC and IP addresses are never written.
+
+| Key | Fields |
+|---|---|
+| `cpu` | `vendor`, `model`, `family`, `model_id`, `stepping` (text: ARM steppings look like `r3p1`), `microcode`, `sockets`, `cores_per_socket`, `threads_per_core`, `numa_nodes`, `mhz_min`, `mhz_max`, `cache` (`l1d`, `l1i`, `l2`, `l3`, as lscpu prints them) |
+| `freq` | `driver`, `governor`, `min_khz`, `max_khz`, `scaling_min_khz`, `scaling_max_khz`, `turbo` (`on` / `off`), `smt`, `cpuidle_driver`, `cpuidle_governor` |
+| `system` | `sys_vendor`, `product_name`, `product_version`, `board_vendor`, `board_name`, `board_version`, `bios_vendor`, `bios_version`, `bios_date`, `bios_release`, `bmc` (`firmware`, `manufacturer`) |
+| `memory` | `slots`, `populated`, `dimms` (`locator`, `size_mb`, `type`, `speed_mts`, `configured_mts`, `manufacturer`, `part`), `configured_speeds` (`{"4800": 16}`), `source` (`dmidecode` or `edac`) |
+| `nics` | one entry per physical interface: `name`, `state`, `speed_mbps`, `mtu`, `pci`, `model`, `driver`, `driver_version`, `firmware`, `offloads` (`{"tcp-segmentation-offload": "on"}`, fixed features left out) |
+| `disks` | `name`, `model`, `firmware`, `size`, `tran`, `rota` |
+| `nvme`, `nvme_models` | `ctrl`, `model`, `firmware` per controller; how many controllers of each model |
+| `bmc` | `power_w`, `temperatures` (`{sensor: C}`), `fans` (`{sensor: RPM}`), at the start of the run |
+| `unavailable` | what was not recorded, one reason per line |
+
+`hardware.txt` is still written as before, for reading and for `diff`. Result folders of older versions have neither `hw/` nor `hardware.json`.
 
 Not covered, because they need the real application, a PDU or hands on the machine: application-level transaction tests (Node.js, Go, PHP, Python stacks), PDU readings, a BIOS export through Redfish, and the PSU failover test.

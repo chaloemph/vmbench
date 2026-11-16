@@ -211,6 +211,7 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 - `tests/test_rounds.sh`: `--rounds`, `--disk-rounds` and their variables (validation, defaults, QUICK), the times of `--list`, and the mem, web and disk stages repeating with stub tools
 - `tests/test_stages.sh`: every file in `stages/` is sourced and defines the required functions; a new stage file is picked up with no other change
 - `tests/test_stream.sh`: the STREAM pin: right and wrong sha256 for `STREAM_C`, a downloaded file and the cache (file:// URLs, a synthetic `stream.c`), `STREAM_SKIP_CHECK`, the mem stage with a stub
-- `tests/test_hw.sh`: the bare-metal additions with stub tools (fio, stress-ng, turbostat, ipmitool, nvme, sudo): `NVME_DEVS` parsing and pre-flight refusals, the nvme stage (one row per disk, totals over the disks), the sustain stage with and without turbostat and a BMC, the burn-in counters, `hardware.txt`, and `report.py` with the new sections
+- `tests/test_hw.sh`: the bare-metal additions with stub tools (fio, stress-ng, turbostat, ipmitool, nvme, sudo): `NVME_DEVS` parsing and pre-flight refusals, the nvme stage (one row per disk, totals over the disks), the sustain stage with and without turbostat and a BMC, the burn-in counters, `hardware.txt`, `hw/` and `hardware.json` (with and without root, and with a failing `hw.py`), and `report.py` with the new sections
+- `tests/test_hwjson.py`: `hw.py`: three synthetic raw folders under `tests/fixtures/hw/` (x86 bare metal, ARM VM, x86 VM) against the expected `hardware.json`, every schema key always present, odd or empty input never raises
 
 CI also runs `bash -n` and `shellcheck -x -S warning` on `vmbench`, the wrappers, `lib/`, `stages/`, `setup/` and `tests/`.
