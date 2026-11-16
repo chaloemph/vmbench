@@ -38,6 +38,7 @@ expect_fail "ROUNDS=0 in the environment" "ROUNDS needs a whole number of 1 or m
 expect_fail "MEM_ROUNDS=two"              "MEM_ROUNDS needs a whole number of 1 or more, got 'two'" env MEM_ROUNDS=two bash "$ROOT/vmbench" run --only mem
 expect_fail "WEB_ROUNDS=-1"               "WEB_ROUNDS needs a whole number"                       env WEB_ROUNDS=-1 bash "$ROOT/vmbench" run --only mem
 expect_fail "DISK_ROUNDS=0"               "DISK_ROUNDS needs a whole number"                      env DISK_ROUNDS=0 bash "$ROOT/vmbench" run --only mem
+expect_fail "PG_ROUNDS=1.5"               "PG_ROUNDS needs a whole number"                        env PG_ROUNDS=1.5 bash "$ROOT/vmbench" run --only mem
 expect_fail "a bad value is refused for --list too" "ROUNDS needs a whole number"                 env ROUNDS=x bash "$ROOT/vmbench" list
 expect_fail "--rounds with only disk selected"  "--rounds is used by cpu, mem and web"            bash "$ROOT/vmbench" run --only disk --rounds 2
 expect_fail "--disk-rounds without the disk stage" "--disk-rounds is only used by the disk stage" bash "$ROOT/vmbench" run --only mem --disk-rounds 2
@@ -59,6 +60,8 @@ t=$(list_time web);  [ "$t" = "18 min" ] && check "list: web 3 rounds is 18 min"
 t=$(list_time web ROUNDS=1); [ "$t" = "6 min" ] && check "list: ROUNDS=1 makes web 6 min" 0 || check "list: ROUNDS=1 makes web 6 min" 1 "got '$t'"
 t=$(list_time disk); [ "$t" = "71 min" ] && check "list: disk default (1 round) is 71 min" 0 || check "list: disk default (1 round) is 71 min" 1 "got '$t'"
 t=$(list_time disk DISK_ROUNDS=3); [ "$t" = "111 min" ] && check "list: DISK_ROUNDS=3 is 71 + 2 x 20 = 111 min" 0 || check "list: DISK_ROUNDS=3 is 71 + 2 x 20 = 111 min" 1 "got '$t'"
+t=$(list_time pg);   [ "$t" = "16 min+load" ] && check "list: pg default (1 round) is 16 min+load" 0 || check "list: pg default (1 round) is 16 min+load" 1 "got '$t'"
+t=$(list_time pg PG_ROUNDS=3); [ "$t" = "48 min+load" ] && check "list: PG_ROUNDS=3 is 3 x 16 min+load" 0 || check "list: PG_ROUNDS=3 is 3 x 16 min+load" 1 "got '$t'"
 OUTPUT=$(HOME=$TMP/home CB=$TMP/x bash "$ROOT/vmbench" run --rounds 2 --disk-rounds 4 --list 2>&1)
 t=$(awk '$1=="disk"{print $4, $5}' <<<"$OUTPUT"); [ "$t" = "131 min" ] && [[ $OUTPUT == *"now cpu 2, mem 2, web 2"* ]] && check "list: --rounds and --disk-rounds change the times" 0 || check "list: --rounds and --disk-rounds change the times" 1 "got '$t'"
 
@@ -172,6 +175,55 @@ STUB
   if [ "$(count '^web\.cpubench\.mix\.max-rps\t[^\t]*\t2222\t[^\t]*\t[12]$' "$res")" = 2 ] && [ "$(count '^web	lbl-web-r[12]-mix.json	OK' "$res")" = 2 ] && [ -s "$TMP/st-web/lbl-web-r2-mix.json" ]; then
     check "web, full path: web-loopback.sh gets a label per round and each round is read" 0
   else check "web, full path: web-loopback.sh gets a label per round and each round is read" 1 "$res"; fi
+
+  # pg: stub psql and pgbench. The checkpoint counter lives in a file: every pgbench run bumps it once, so each measured
+  # run is seen to contain one checkpoint, and psql returns the counter for the pg_stat_checkpointer query.
+  cat > "$TMP/stubs/psql" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case $1 in
+    -c|-Atc) q=$2; shift
+      case $q in
+        *data_directory*) echo /tmp ;;
+        *pg_stat_checkpointer*) echo "$(cat "$PGBENCH_CKPT") 0" ;;
+        *version\(\)*) echo "version = PostgreSQL 16 stub" ;;
+        *pg_settings*) echo "shared_buffers = 1024 8kB   [configuration file]" ;;
+        "select 1") echo 1 ;;
+        checkpoint) [ -z "${PSQL_CHECKPOINT_RC:-}" ] || exit "$PSQL_CHECKPOINT_RC" ;;
+      esac ;;
+  esac
+  shift
+done
+STUB
+  cat > "$TMP/stubs/pgbench" <<'STUB'
+#!/usr/bin/env bash
+case " $* " in *" -i "*) exit 0 ;; esac
+echo $(( $(cat "$PGBENCH_CKPT") + 1 )) > "$PGBENCH_CKPT"
+for i in 1 2 3; do echo "progress: $((i * 10)).0 s, 100$i.0 tps, lat 1.0 ms stddev 0.1"; done
+case " $* " in *" -r "*) echo "latency average = 1.234 ms" ;; esac
+echo "tps = 1000.5 (without initial connection time)"
+STUB
+  chmod +x "$TMP/stubs/psql" "$TMP/stubs/pgbench"
+  rm -rf "$TMP/st-pg"; mkdir -p "$TMP/st-pg"; echo 0 > "$TMP/ckpt"
+  res=$(stage_run pg PG_ROUNDS=2 PGBENCH_CKPT="$TMP/ckpt")
+  ok=0
+  for id in 'pg\.pgbench\.tpcb\.tps' 'pg\.pgbench\.tpcb\.stability' 'pg\.pgbench\.latency\.single'; do
+    [ "$(count "^$id\t.*\t1$" "$res")" = 1 ] && [ "$(count "^$id\t.*\t2$" "$res")" = 1 ] || { ok=1; echo "   $id: $(count "^$id\t" "$res") rows"; }
+  done
+  [ "$ok" = 0 ] && check "pg, 2 rounds: tps, stability and single latency have one row per round" 0 || check "pg, 2 rounds: tps, stability and single latency have one row per round" 1 "$res"
+  [ "$(count '^pg	pgbench init	OK' "$res")" = 1 ] && [ "$(count '^pg	pgbench tpcb	OK' "$res")" = 2 ] && [ "$(count '^pg	checkpoint before tpcb	OK' "$res")" = 2 ] && [ "$(count '^pg	checkpoint before single	OK' "$res")" = 2 ] \
+    && check "pg, 2 rounds: the data is loaded once, a checkpoint precedes every measured run" 0 || check "pg, 2 rounds: the data is loaded once, a checkpoint precedes every measured run" 1 "$res"
+  [ -s "$TMP/st-pg/pgbench-tpcb.log" ] && [ -s "$TMP/st-pg/pgbench-tpcb-r2.log" ] && [ -s "$TMP/st-pg/pgbench-single-r2.log" ] && [ ! -e "$TMP/st-pg/pgbench-tpcb-r1.log" ] \
+    && check "pg: round 1 keeps the old file names, later rounds add -rN" 0 || check "pg: round 1 keeps the old file names, later rounds add -rN" 1 "$(ls "$TMP/st-pg")"
+  ck=$(cat "$TMP/st-pg/pg-checkpoints.txt" 2>/dev/null)
+  [ "$(count '^round [12] (tpcb|single): timed=1 requested=0' "$ck")" = 4 ] && check "pg: pg-checkpoints.txt counts the checkpoints inside each measured run" 0 || check "pg: pg-checkpoints.txt counts the checkpoints inside each measured run" 1 "$ck"
+  grep -q '^version = ' "$TMP/st-pg/pg-settings.txt" && grep -q '^shared_buffers = ' "$TMP/st-pg/pg-settings.txt" \
+    && check "pg: pg-settings.txt has the version and the settings" 0 || check "pg: pg-settings.txt has the version and the settings" 1 "$(cat "$TMP/st-pg/pg-settings.txt")"
+  # a refused CHECKPOINT (no pg_checkpoint grant) is a warning, the measurement still runs
+  rm -rf "$TMP/st-pg"; mkdir -p "$TMP/st-pg"; echo 0 > "$TMP/ckpt"
+  res=$(stage_run pg PG_ROUNDS=1 PGBENCH_CKPT="$TMP/ckpt" PSQL_CHECKPOINT_RC=1)
+  [ "$(count '^pg\.pgbench\.tpcb\.tps\t' "$res")" = 1 ] && [ "$(count 'checkpoint before' "$res")" = 0 ] && grep -q 'CHECKPOINT refused' "$TMP/st-pg/stage.out" \
+    && check "pg: a refused CHECKPOINT is logged and the run goes on" 0 || check "pg: a refused CHECKPOINT is logged and the run goes on" 1 "$res" "$(cat "$TMP/st-pg/stage.out")"
 else
   echo "skip stage tests (no jq)"
 fi

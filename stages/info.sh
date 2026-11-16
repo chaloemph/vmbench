@@ -21,6 +21,19 @@ stage_info_run() {
     echo "--- cpu flags"; grep -m1 -E '^(flags|Features)' /proc/cpuinfo | grep -o -wE 'aes|avx2|avx512f|sha_ni|pmull|sha2|atomics|sve|hypervisor' | sort -u | tr '\n' ' '; echo
     echo "--- memory"; free -m; echo "--- numa"; numactl -H 2>&1 | head -3
     echo "--- disks"; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL,ROTA; df -h / "$DATA_DIR" 2>/dev/null
+    # kernel settings that change database and disk results (compare them between machines before comparing pg.*)
+    echo "--- kernel (memory, writeback)"
+    echo "transparent_hugepage: $(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null)  defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null)"
+    echo "hugepages: nr_hugepages=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null) size=$(awk '/Hugepagesize/{print $2 $3}' /proc/meminfo)"
+    for k in swappiness dirty_background_ratio dirty_ratio dirty_background_bytes dirty_bytes dirty_expire_centisecs overcommit_memory; do
+      printf 'vm.%s=%s ' "$k" "$(cat /proc/sys/vm/$k 2>/dev/null)"; done; echo
+    echo "--- i/o scheduler"
+    for d in /sys/block/*/queue; do [ -e "$d/scheduler" ] || continue; case $d in /sys/block/loop*|/sys/block/ram*) continue ;; esac
+      printf '%s: %s  nr_requests=%s read_ahead_kb=%s\n' \
+      "$(basename "$(dirname "$d")")" "$(cat "$d/scheduler")" "$(cat "$d/nr_requests" 2>/dev/null)" "$(cat "$d/read_ahead_kb" 2>/dev/null)"; done
+    echo "--- mounts (data, db, wal)"
+    for d in "$DATA_DIR" "$DB_DIR" "$WAL_DIR" /pgdata /pgwal; do
+      [ -e "$d" ] && findmnt -T "$d" -no TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null | sed "s|^|$d -> |"; done | sort -u
     echo "--- network"; ip -br addr
     echo "--- load"; uptime; ps -eo pcpu,comm --sort=-pcpu | sed -n 1,6p
     echo "--- services"; systemctl is-active postgresql zabbix-agent zabbix-agent2 docker 2>&1 | paste -sd' '

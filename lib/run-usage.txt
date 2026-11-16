@@ -36,12 +36,14 @@ Settings (environment variables):
   ROUNDS       repeats of cpu, mem and web                   (default: 3)
   MEM_ROUNDS WEB_ROUNDS  repeats of one of them                (default: ROUNDS)
   DISK_ROUNDS  repeats of the disk stage                     (default: 1)
+  PG_ROUNDS    repeats of the pg measurements (data loaded once) (default: 1)
+  PG_SCALE     pgbench scale factor                          (default: data of 1.5 x RAM, capped by free space)
   QUICK        1 = short smoke run                           (default: 0)
   CB           cpubench folder (setup-cpubench.sh output)    (default: ~/cpubench-current)
   DATA_DIR     folder for fio test files                     (default: ~/bench-data)
   FIO_SIZE     size of the fio test file                     (default: 8G)
   RAW_DEV      raw test disk, e.g. /dev/sdb (needs CONFIRM_WIPE=yes, ERASES THE WHOLE DISK)
   DB_DIR WAL_DIR  folders for disk.fio.db-* and disk.wal.*           (default: DATA_DIR; e.g. /pgdata /pgwal)
-  PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench)
+  PGPORT PGHOST PGDATABASE  PostgreSQL to use for the pg stage (default: port 5433, db bench, from setup-postgres-bench.sh)
   PEER         same as --peer
   BURNIN_HOURS same as --hours
