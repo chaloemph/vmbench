@@ -101,6 +101,35 @@ PY
     && check "QUICK run with XLSX_LAYOUT: review.xlsx in the layout order, with the hardware.json row" 0 \
     || check "QUICK run with XLSX_LAYOUT: review.xlsx" 1 "rc=$RC $ok" "${OUTPUT: -400}"
 else echo "skip XLSX=1 run (no openpyxl)"; fi
+
+# --- NOTIFY=1: pre-flight refusals (no network), and the summary and files sent at the end, also after a FAIL
+rm -rf "$TMP/out"
+expect "NOTIFY=yes is refused"                    2 "NOTIFY needs 1 or 0"       env NOTIFY=yes bash "$VM" run --only info
+expect "NOTIFY=1 without Telegram settings: pre-flight exit 2" 2 "NOTIFY=1: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID" env -u TELEGRAM_BOT_TOKEN -u TELEGRAM_CHAT_ID NOTIFY=1 bash "$VM" run --only info
+expect "NOTIFY=1 --detach without notify.env: pre-flight exit 2" 2 "NOTIFY=1 with --detach needs $TMP/home/.config/vmbench/notify.env" \
+  env TELEGRAM_BOT_TOKEN=1:x TELEGRAM_CHAT_ID=2 NOTIFY=1 bash "$VM" run --only info --detach
+[ ! -e "$TMP/out" ] && check "a refused NOTIFY run leaves no result folder" 0 || check "a refused NOTIFY run leaves no result folder" 1 "$(ls -A "$TMP/out")"
+if command -v jq >/dev/null 2>&1; then
+  mkdir -p "$TMP/nbin" "$TMP/ncb"
+  cat > "$TMP/nbin/curl" <<'STUB'
+#!/usr/bin/env bash
+cfg=$(cat); m=$(sed -n 's|^url = ".*/bot[^/]*/\([A-Za-z]*\)"$|\1|p' <<<"$cfg")
+{ printf '%s' "$m"; for a in "$@"; do case $a in document=*|text=*) printf ' %s' "${a%%$'\n'*}" ;; esac; done; echo; } >> "$CURL_LOG"
+echo '{"ok":true,"result":{}}'
+STUB
+  # a cpubench whose web load fails: the web stage records a FAIL, the run still ends and reports
+  printf '#!/usr/bin/env bash\ncase "$1 $2" in "web serve") exec sleep 30 ;; "web load") exit 1 ;; version) echo stub ;; esac\n' > "$TMP/ncb/cpubench"
+  printf '#!/usr/bin/env bash\necho "00:00:05 CPU %%usr %%steal %%idle"\necho "00:00:05 all 1.00 0.20 98.80"\nexec sleep 300\n' > "$TMP/nbin/mpstat"
+  chmod +x "$TMP/nbin/curl" "$TMP/nbin/mpstat" "$TMP/ncb/cpubench"
+  rm -rf "$TMP/out"; rm -f "$TMP/curl.log"
+  xl=0; python3 -I -c 'import openpyxl' 2>/dev/null && xl=1
+  RUN_TIMEOUT=120 run env PATH="$TMP/nbin:$PATH" CURL_LOG="$TMP/curl.log" LABEL=lbl CB="$TMP/ncb" QUICK=1 NOTIFY=1 XLSX=$xl TELEGRAM_BOT_TOKEN=1:x TELEGRAM_CHAT_ID=2 bash "$VM" run --only web
+  calls=$(sed "s|document=@\"$TMP/out/|doc:|; s|\"$||" "$TMP/curl.log" 2>/dev/null | paste -sd'|')
+  want="sendMessage text=vmbench run finished: lbl|sendDocument doc:report.md"; [ "$xl" = 1 ] && want="$want|sendDocument doc:review.xlsx"
+  [ "$RC" = 0 ] && grep -qP '^web\t.*\tFAIL' "$TMP/out/status.tsv" && [ "$calls" = "$want" ] && grep -q 'notify: sent to Telegram' "$TMP/out/run.log" \
+    && check "NOTIFY=1: a run with a FAIL step sends the summary, then report.md (and review.xlsx)" 0 \
+    || check "NOTIFY=1: summary and files at the end" 1 "rc=$RC calls=$calls" "want=$want" "${OUTPUT: -300}"
+else echo "skip NOTIFY=1 run (no jq)"; fi
 expect "report show of a missing folder"          2 "not found"                 bash "$VM" report show "$TMP/nothing"
 fixture=$(find "$ROOT/tests/fixtures" -name results.tsv -print -quit)
 if [ -n "$fixture" ]; then
