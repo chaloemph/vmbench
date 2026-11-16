@@ -1,0 +1,2 @@
+NAME="vda" MODEL="" REV="" SIZE="100G" TRAN="" ROTA="1"
+NAME="sr0" MODEL="QEMU CD-ROM" REV="2.5+" SIZE="1024M" TRAN="sata" ROTA="1"

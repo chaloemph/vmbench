@@ -1,0 +1,2 @@
+dimm0|mc#0memory#0|8192|Unknown
+dimm1|mc#0memory#1|0|Unknown

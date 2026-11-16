@@ -1,0 +1,21 @@
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              8
+Vendor ID:           AuthenticAMD
+CPU family:          25
+Model:               17
+Model name:          AMD EPYC 9354 32-Core Processor
+Stepping:            1
+CPU MHz:             3249.998
+BogoMIPS:            6499.99
+Hypervisor vendor:   KVM
+Virtualization type: full
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            1024K
+L3 cache:            32768K
+NUMA node(s):        1
+Thread(s) per core:  2
+Core(s) per socket:  4
+Socket(s):           1

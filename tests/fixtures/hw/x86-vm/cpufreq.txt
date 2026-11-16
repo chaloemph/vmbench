@@ -1,0 +1,11 @@
+scaling_driver=
+scaling_governor=
+cpuinfo_min_freq=
+cpuinfo_max_freq=
+scaling_min_freq=
+scaling_max_freq=
+no_turbo=
+boost=
+smt=on
+cpuidle_driver=haltpoll
+cpuidle_governor=haltpoll

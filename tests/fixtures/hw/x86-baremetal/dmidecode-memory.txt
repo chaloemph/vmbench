@@ -1,0 +1,61 @@
+# dmidecode 3.5
+Getting SMBIOS data from sysfs.
+
+Handle 0x110A1, DMI type 17, 92 bytes
+Memory Device
+	Total Width: 80 bits
+	Size: 32 GB
+	Form Factor: DIMM
+	Locator: CPU1_A1
+	Bank Locator: BANK A1
+	Type: DDR5
+	Type Detail: Synchronous Registered (Buffered)
+	Speed: 4800 MT/s
+	Manufacturer: ExampleRAM
+	Part Number: EXR5-32G4800R   
+	Rank: 2
+	Configured Memory Speed: 4800 MT/s
+
+Handle 0x110A2, DMI type 17, 92 bytes
+Memory Device
+	Total Width: 80 bits
+	Size: 32 GB
+	Form Factor: DIMM
+	Locator: CPU1_A2
+	Bank Locator: BANK A2
+	Type: DDR5
+	Type Detail: Synchronous Registered (Buffered)
+	Speed: 4800 MT/s
+	Manufacturer: ExampleRAM
+	Part Number: EXR5-32G4800R   
+	Rank: 2
+	Configured Memory Speed: 4800 MT/s
+
+Handle 0x110B1, DMI type 17, 92 bytes
+Memory Device
+	Total Width: 80 bits
+	Size: 32 GB
+	Form Factor: DIMM
+	Locator: CPU1_B1
+	Bank Locator: BANK B1
+	Type: DDR5
+	Type Detail: Synchronous Registered (Buffered)
+	Speed: 4800 MT/s
+	Manufacturer: ExampleRAM
+	Part Number: EXR5-32G4800R   
+	Rank: 2
+	Configured Memory Speed: 4400 MT/s
+
+Handle 0x110B2, DMI type 17, 92 bytes
+Memory Device
+	Total Width: Unknown
+	Size: No Module Installed
+	Form Factor: DIMM
+	Locator: CPU1_B2
+	Bank Locator: Not Specified
+	Type: Unknown
+	Speed: Unknown
+	Manufacturer: Not Specified
+	Part Number: Not Specified
+	Configured Memory Speed: Unknown
+

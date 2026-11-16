@@ -1,0 +1,14 @@
+state=down
+speed=-1
+mtu=1500
+pci=0000:04:00.0
+--- lspci
+04:00.0 Ethernet controller: Example Networks EX-1G (rev 03)
+--- ethtool -i
+driver: exgbe
+version: 6.8.0-45-generic
+firmware-version: 1.2.3
+bus-info: 0000:04:00.0
+--- ethtool -k
+tcp-segmentation-offload: on
+generic-receive-offload: on

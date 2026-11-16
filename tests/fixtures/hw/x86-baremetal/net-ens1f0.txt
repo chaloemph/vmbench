@@ -1,0 +1,26 @@
+state=up
+speed=25000
+mtu=9000
+pci=0000:31:00.0
+--- lspci
+31:00.0 Ethernet controller: Example Networks EX-25G Dual Port Adapter (rev 01)
+--- ethtool -i
+driver: exnic
+version: 6.8.0-45-generic
+firmware-version: 22.36.1010 (EX_0000000001)
+expansion-rom-version: 
+bus-info: 0000:31:00.0
+supports-statistics: yes
+--- ethtool -k
+Features for ens1f0:
+rx-checksumming: on
+tx-checksumming: on
+tcp-segmentation-offload: on
+	tx-tcp-segmentation: on
+generic-segmentation-offload: on
+generic-receive-offload: on
+large-receive-offload: off
+rx-vlan-offload: on
+tx-vlan-offload: on
+l2-fwd-offload: off [fixed]
+hw-tc-offload: off

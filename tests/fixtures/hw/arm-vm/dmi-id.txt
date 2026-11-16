@@ -1,0 +1,10 @@
+sys_vendor: QEMU
+product_name: KVM Virtual Machine
+product_version: virt-8.2
+board_vendor: 
+board_name: 
+board_version: 
+bios_vendor: EFI Development Kit II / OVMF
+bios_version: 0.0.0
+bios_date: 02/06/2015
+bios_release: 0.0

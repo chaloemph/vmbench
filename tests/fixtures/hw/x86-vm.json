@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "cpu": {
+    "vendor": "AuthenticAMD",
+    "model": "AMD EPYC 9354 32-Core Processor",
+    "family": "25",
+    "model_id": "17",
+    "stepping": "1",
+    "microcode": "0xa101148",
+    "sockets": 1,
+    "cores_per_socket": 4,
+    "threads_per_core": 2,
+    "numa_nodes": 1,
+    "mhz_min": null,
+    "mhz_max": null,
+    "cache": {
+      "l1d": "32K",
+      "l1i": "32K",
+      "l2": "1024K",
+      "l3": "32768K"
+    }
+  },
+  "freq": {
+    "driver": null,
+    "governor": null,
+    "min_khz": null,
+    "max_khz": null,
+    "scaling_min_khz": null,
+    "scaling_max_khz": null,
+    "turbo": null,
+    "smt": "on",
+    "cpuidle_driver": "haltpoll",
+    "cpuidle_governor": "haltpoll"
+  },
+  "system": {
+    "sys_vendor": "QEMU",
+    "product_name": "Standard PC (Q35 + ICH9, 2009)",
+    "product_version": "pc-q35-8.2",
+    "board_vendor": null,
+    "board_name": null,
+    "board_version": null,
+    "bios_vendor": "SeaBIOS",
+    "bios_version": "1.16.3-debian-1.16.3-2",
+    "bios_date": "04/01/2014",
+    "bios_release": "0.0",
+    "bmc": {
+      "firmware": null,
+      "manufacturer": null
+    }
+  },
+  "memory": {
+    "slots": 2,
+    "populated": 1,
+    "dimms": [
+      {
+        "locator": "mc#0memory#0",
+        "size_mb": 8192,
+        "type": null,
+        "speed_mts": null,
+        "configured_mts": null,
+        "manufacturer": null,
+        "part": null
+      }
+    ],
+    "configured_speeds": {},
+    "source": "edac"
+  },
+  "nics": [
+    {
+      "name": "ens3",
+      "state": "up",
+      "speed_mbps": null,
+      "mtu": 1500,
+      "pci": "0000:00:03.0",
+      "model": "Red Hat, Inc. Virtio network device",
+      "driver": "virtio_net",
+      "driver_version": "1.0.0",
+      "firmware": null,
+      "offloads": {
+        "tcp-segmentation-offload": "on",
+        "generic-receive-offload": "on"
+      }
+    }
+  ],
+  "disks": [
+    {
+      "name": "vda",
+      "model": null,
+      "firmware": null,
+      "size": "80G",
+      "tran": null,
+      "rota": 1
+    },
+    {
+      "name": "vdb",
+      "model": "Virtual Disk \"B\"",
+      "firmware": null,
+      "size": "200G",
+      "tran": null,
+      "rota": 1
+    }
+  ],
+  "nvme": [],
+  "nvme_models": {},
+  "bmc": {
+    "power_w": null,
+    "temperatures": {},
+    "fans": {}
+  },
+  "unavailable": [
+    "cpufreq: not exposed by the kernel (usual in a VM)",
+    "dmidecode -t bios: needs root or sudo -n",
+    "dmidecode -t memory: needs root or sudo -n",
+    "ipmitool mc info: ipmitool is not installed"
+  ]
+}

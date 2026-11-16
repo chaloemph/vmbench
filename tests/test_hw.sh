@@ -281,6 +281,60 @@ else
   echo "skip stage tests (no jq)"
 fi
 
+# --- info: hw/ keeps the raw outputs, hardware.txt is written from them, hw.py turns them into hardware.json.
+# lscpu, dmidecode, ipmitool and sudo are stubs; /sys is this machine's (any content is fine for these checks).
+mkdir -p "$TMP/stubs-info"
+cat > "$TMP/stubs-info/lscpu" <<'STUB'
+#!/usr/bin/env bash
+printf 'Vendor ID:            StubVendor\nModel name:           Stub CPU 9000\nCPU family:           6\nModel:                143\nStepping:             8\nSocket(s):            2\n'
+STUB
+cat > "$TMP/stubs-info/dmidecode" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "-t bios") printf 'BIOS Information\n\tVendor: Stub BIOS\n\tVersion: 9.9\n\tRelease Date: 01/01/2026\n' ;;
+  "-t memory") for l in A1 A2; do printf 'Memory Device\n\tSize: 16 GB\n\tLocator: %s\n\tType: DDR5\n\tSpeed: 4800 MT/s\n\tSerial Number: SN-SECRET-%s\n\tAsset Tag: AT-SECRET\n\tPart Number: STUB-16G\n\tConfigured Memory Speed: 4800 MT/s\n\n' "$l" "$l"; done ;;
+esac
+STUB
+cat > "$TMP/stubs-info/sudo-no" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$TMP"/stubs-info/*
+info_hw() { # OUT DIR, extra PATH: run info_hardware alone
+  rm -rf "$1"; mkdir -p "$1"
+  PATH="$2:$PATH" bash -c 'VMBENCH_HOME=$1; OUT=$2
+    for f in common hw; do . "$VMBENCH_HOME/lib/$f.sh"; done; . "$VMBENCH_HOME/stages/info.sh"
+    info_hardware' _ "$ROOT" "$1" > "$1/stage.out" 2>&1
+}
+info_hw "$TMP/info1" "$TMP/stubs-info:$TMP/stubs"
+j=$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["schema"], d["cpu"]["model"], d["cpu"]["stepping"], d["system"]["bmc"]["firmware"], d["memory"]["source"], d["memory"]["populated"], d["bmc"]["power_w"], d["bmc"]["fans"]["FAN1"])' "$TMP/info1/hardware.json" 2>&1)
+[ "$j" = "1 Stub CPU 9000 8 1.23 dmidecode 2 250 5040" ] && check "info: hardware.json loads, cpu.model, DIMMs, BMC firmware and power from the stubs" 0 \
+  || check "info: hardware.json from the stubs" 1 "got: $j" "$(cat "$TMP/info1/stage.out")"
+[ -s "$TMP/info1/hw/lscpu.txt" ] && [ -s "$TMP/info1/hw/dmidecode-memory.txt" ] && [ -s "$TMP/info1/hw/ipmi-dcmi-power.txt" ] && [ -s "$TMP/info1/hw/cpufreq.txt" ] \
+  && check "info: hw/ keeps the raw output of each command" 0 || check "info: hw/ keeps the raw output of each command" 1 "$(ls "$TMP/info1/hw")"
+grep -q '^Model name: *Stub CPU 9000' "$TMP/info1/hardware.txt" && grep -q '^dimms populated: 2 of 2 slots' "$TMP/info1/hardware.txt" && grep -q 'Firmware Revision *: 1.23' "$TMP/info1/hardware.txt" \
+  && grep -q '^--- disks' "$TMP/info1/hardware.txt" && check "info: hardware.txt still has the cpu, memory, BMC and disk sections" 0 || check "info: hardware.txt sections" 1 "$(cat "$TMP/info1/hardware.txt")"
+grep -rqiE 'SECRET|serial|asset tag' "$TMP/info1/hw" "$TMP/info1/hardware.txt" "$TMP/info1/hardware.json" \
+  && check "info: no serial numbers or asset tags in hw/, hardware.txt, hardware.json" 1 "$(grep -rliE 'SECRET|serial|asset tag' "$TMP/info1")" \
+  || check "info: no serial numbers or asset tags in hw/, hardware.txt, hardware.json" 0
+# without root (sudo asks for a password): the root-only parts are listed in "unavailable", the rest is still there
+mkdir -p "$TMP/stubs-noroot"; cp "$TMP/stubs-info/lscpu" "$TMP/stubs-info/dmidecode" "$TMP/stubs/ipmitool" "$TMP/stubs-noroot/"; cp "$TMP/stubs-info/sudo-no" "$TMP/stubs-noroot/sudo"
+if [ "$(id -u)" != 0 ]; then
+  info_hw "$TMP/info2" "$TMP/stubs-noroot"
+  j=$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["cpu"]["model"], d["memory"]["source"] or "-", d["bmc"]["power_w"], "|".join(d["unavailable"]))' "$TMP/info2/hardware.json" 2>&1)
+  [[ $j == "Stub CPU 9000 "* ]] && [[ $j == *"dmidecode -t memory: needs root or sudo -n"* ]] && [[ $j == *"ipmitool mc info: needs root or sudo -n, and a BMC"* ]] && [[ $j == *" None "* ]] \
+    && [ ! -e "$TMP/info2/hw/dmidecode-memory.txt" ] && check "info without root: dmidecode and ipmitool are listed as unavailable, nothing else is lost" 0 \
+    || check "info without root: unavailable parts" 1 "got: $j"
+  grep -q 'dmidecode -t memory: needs root or sudo -n' "$TMP/info2/hardware.txt" && check "info without root: hardware.txt says what was not recorded" 0 || check "info without root: hardware.txt says what was not recorded" 1 "$(tail -5 "$TMP/info2/hardware.txt")"
+fi
+# a broken hw.py does not stop the stage: no hardware.json, a warning, hardware.txt is complete
+mkdir -p "$TMP/brokenhome/lib" "$TMP/brokenhome/stages"; cp "$ROOT"/lib/*.sh "$TMP/brokenhome/lib/"; cp "$ROOT/stages/info.sh" "$TMP/brokenhome/stages/"
+echo 'raise SystemExit(1)' > "$TMP/brokenhome/hw.py"
+rm -rf "$TMP/info3"; mkdir -p "$TMP/info3"
+PATH="$TMP/stubs-info:$TMP/stubs:$PATH" bash -c 'VMBENCH_HOME=$1; OUT=$2; for f in common hw; do . "$VMBENCH_HOME/lib/$f.sh"; done; . "$VMBENCH_HOME/stages/info.sh"; info_hardware; echo "rc=$?"' _ "$TMP/brokenhome" "$TMP/info3" > "$TMP/info3/stage.out" 2>&1
+[ ! -e "$TMP/info3/hardware.json" ] && [ ! -e "$TMP/info3/hardware.json.tmp" ] && grep -q 'hardware.json was not written' "$TMP/info3/stage.out" && grep -q '^rc=0' "$TMP/info3/stage.out" && [ -s "$TMP/info3/hardware.txt" ] \
+  && check "info: a failing hw.py is a warning, hardware.txt is still written" 0 || check "info: a failing hw.py is a warning" 1 "$(cat "$TMP/info3/stage.out")"
+
 # --- report.py: the new sections, directions and a per-disk comparison from a synthetic folder
 mkdir -p "$TMP/ra" "$TMP/rb"
 for d in ra rb; do

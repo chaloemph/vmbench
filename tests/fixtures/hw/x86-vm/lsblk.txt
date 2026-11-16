@@ -1,0 +1,2 @@
+NAME="vda" MODEL="" REV="" SIZE="80G" TRAN="" ROTA="1"
+NAME="vdb" MODEL="Virtual Disk \x22B\x22" REV="" SIZE="200G" TRAN="" ROTA="1"

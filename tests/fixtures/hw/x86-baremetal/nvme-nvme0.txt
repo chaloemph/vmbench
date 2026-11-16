@@ -1,0 +1,2 @@
+model=EXSSD PM9A3 3.84TB
+firmware=GDC5902Q
