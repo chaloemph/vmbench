@@ -5,6 +5,8 @@
 #   as_root CMD...                 run CMD as root: directly when we are root, through `sudo -n` when sudo needs no
 #                                  password; otherwise return 127 (the caller treats that as "not available"). The
 #                                  answer of sudo is asked once and kept in SUDO_OK.
+#   can_root                       true when as_root can run something (asks sudo once, in this shell: call it
+#                                  before a pipeline, whose subshells cannot keep SUDO_OK)
 #   power_reading                  one reading of the system power from the BMC (ipmitool dcmi power reading), in W;
 #                                  prints nothing when there is no BMC, no ipmitool or no permission
 #   power_sampler_start FILE SEC   append "<epoch> <W>" to FILE every SEC seconds in the background (POWER_PID)
@@ -14,12 +16,16 @@
 #   cpu_mhz_now                    the average clock of all CPUs right now, from /proc/cpuinfo (x86) or cpufreq;
 #                                  prints nothing when neither exists (common in ARM VMs)
 
-as_root() {
-  if [ "$(id -u)" = 0 ]; then "$@"; return; fi
+can_root() {
+  if [ "$(id -u)" = 0 ]; then return 0; fi
   if [ -z "${SUDO_OK:-}" ]; then
     if need sudo && sudo -n true 2>/dev/null; then SUDO_OK=1; else SUDO_OK=0; fi
   fi
-  [ "$SUDO_OK" = 1 ] || return 127
+  [ "$SUDO_OK" = 1 ]
+}
+as_root() {
+  if [ "$(id -u)" = 0 ]; then "$@"; return; fi
+  can_root || return 127
   sudo -n "$@"
 }
 
