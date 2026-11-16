@@ -33,7 +33,8 @@ ROLE=${ROLE:-$(id -un)}
 
 [ -n "$PGVER" ] || { echo "PostgreSQL is not installed (no /usr/lib/postgresql/<ver>)" >&2; exit 1; }
 command -v pg_createcluster >/dev/null || { echo "pg_createcluster not found (install postgresql-common)" >&2; exit 1; }
-sudo -v || { echo "sudo is required" >&2; exit 1; }
+# sudo without a password when it is allowed (NOPASSWD, a cached ticket), else ask once
+sudo -n true 2>/dev/null || sudo -v || { echo "sudo is required" >&2; exit 1; }
 
 RAM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
 SHARED_MB=$((RAM_MB / 4))
@@ -96,6 +97,6 @@ psql -X -At -p "$PGPORT" -d "$DB" \
   -c "show synchronous_commit" -c "show fsync" -c "show huge_pages" -c "show data_checksums" \
   -c "show wal_compression" -c "show jit" \
   -c "select 'checkpoint allowed: '||(pg_has_role(current_user, 'pg_checkpoint', 'member') or rolsuper)::text from pg_roles where rolname = current_user"
-echo "WAL location: $(readlink -f "$(psql -X -At -p "$PGPORT" -d "$DB" -c 'show data_directory')/pg_wal" 2>/dev/null || echo unknown)"
+echo "WAL location: $(sudo readlink -f "$(psql -X -At -p "$PGPORT" -d "$DB" -c 'show data_directory')/pg_wal" 2>/dev/null || echo unknown)"   # the data dir is postgres-only (0700)
 echo
 echo "Use it with:  export PGPORT=$PGPORT PGDATABASE=$DB"
