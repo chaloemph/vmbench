@@ -128,7 +128,7 @@ vmbench status [DIR]
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)), `XLSX=1` (also write `review.xlsx` at the end, see [Reports](#reports)), `XLSX_LAYOUT=FILE` (the `layout.tsv` for it; implies `XLSX=1`). `vmbench run --help` lists them all.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)), `XLSX=1` (also write `review.xlsx` at the end, see [Reports](#reports)), `XLSX_LAYOUT=FILE` (the `layout.tsv` for it; implies `XLSX=1`), `NOTIFY=1` (send a summary and the reports to Telegram at the end, see [Telegram](#telegram)). `vmbench run --help` lists them all.
 
 ### Rounds
 
@@ -231,6 +231,24 @@ Marks and warnings you will see:
 - "not clearly different": the difference is within the larger CV of the two runs, or 1%
 - warnings for different cpubench versions, `QUICK=1`, different test sizes or vCPU counts, high CPU steal, failed stages, and disk results taken from files rather than a raw device
 
+### Telegram
+
+`vmbench notify` sends a message and files to a Telegram chat through a bot (Bot API `sendMessage` and `sendDocument`, with `curl` and `jq`). Create a bot with @BotFather, add it to the chat, and put its token and the chat id into `~/.config/vmbench/notify.env` (or the environment):
+
+```bash
+mkdir -p ~/.config/vmbench && install -m 600 /dev/null ~/.config/vmbench/notify.env
+printf 'TELEGRAM_BOT_TOKEN=123456:ABC...\nTELEGRAM_CHAT_ID=-1001234567890\n' >> ~/.config/vmbench/notify.env
+./vmbench notify --check                                  # bot and chat names; sends nothing
+./vmbench notify --text "x86 run started"
+./vmbench notify --summary ~/bench-results/x86 ~/bench-results/x86/report.md ~/bench-results/x86/review.xlsx
+```
+
+`--summary DIR` builds a plain-text message from `meta.json`, `status.tsv` and `report.md`: label, architecture, CPU, vCPU and RAM, stages, start and end time with the duration, the failed steps, and the first three warnings. Each file is sent as a document with its name as the caption; a file over 50 MB (the limit for bots) is skipped with a message. Exit codes: 0 sent, 1 Telegram or the network refused, 2 usage or settings.
+
+With `NOTIFY=1`, `vmbench run` does this at the end of every run, also when steps failed: the summary, `report.md`, and `review.xlsx` when `XLSX=1` made one. The pre-flight checks `curl`, `jq` and the two settings without contacting Telegram (run `vmbench notify --check` yourself before a long run). A `--detach` run needs the `notify.env` file: `TELEGRAM_*` from the environment are not passed into the tmux session, because the launcher is a plain-text file in the result folder.
+
+The token and chat id are read from the environment or the file (the file is parsed, never executed; a mode other than 600 is warned about) and passed to curl on its stdin, never on its command line, in the output or in a `bash -x` trace. Do not commit `notify.env`.
+
 ## Reading the results correctly
 
 [docs/reading-results.md](docs/reading-results.md) ([ภาษาไทย](docs/reading-results.th.md)) explains every value: what it measures, whether higher or lower is better, what it means for real work (web servers, databases, file servers and so on), and which values to look at first for a given workload. Before comparing two machines, keep these in mind:
@@ -249,9 +267,9 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 
 | File | Purpose |
 |---|---|
-| `vmbench` | entry script: `run`, `list`, `report` (`show`, `compare`, `xlsx`, `layout`), `setup`, `version`, `help` |
+| `vmbench` | entry script: `run`, `list`, `report` (`show`, `compare`, `xlsx`, `layout`), `setup`, `notify`, `version`, `help` |
 | `run-benchmark.sh` | compatibility wrapper, the same as `vmbench run` |
-| `lib/` | shared helpers: `common.sh` (logging, `die`), `metrics.sh` (the metric table and `rec`), `preflight.sh`, `rawdev.sh` (raw-device safety, `NVME_DEVS`), `hw.sh` (`as_root`, the BMC power reading), `meta.sh` (`meta.json`), `stages.sh` (stage loader), `run.sh` (option parsing and the run), `run-usage.txt` (the `--help` text) |
+| `lib/` | shared helpers: `common.sh` (logging, `die`), `metrics.sh` (the metric table and `rec`), `preflight.sh`, `rawdev.sh` (raw-device safety, `NVME_DEVS`), `hw.sh` (`as_root`, the BMC power reading), `notify.sh` (`vmbench notify`, Telegram), `meta.sh` (`meta.json`), `stages.sh` (stage loader), `run.sh` (option parsing and the run), `run-usage.txt` (the `--help` text) |
 | `stages/<stage>.sh` | one file per stage: `cpu`, `mem`, `disk`, `nvme`, `pg`, `net`, `web`, `sustain`, `burnin`, `info`. Adding a stage means adding one file, see [docs/tests.md](docs/tests.md) |
 | `lib/stream.sh` | the pinned STREAM source: URL, sha256, download and check |
 | `report.py` | tables and comparisons, English and Thai message catalogs (standard library only) |

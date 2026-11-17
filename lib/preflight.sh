@@ -8,7 +8,8 @@
 #   check_cpubench      add a problem when $CB/cpubench is missing
 #   check_target        RAW_DEV safety, or 15 GB free in DATA_DIR
 #   check_stage NAME    fill PROBLEMS by running stage_<NAME>_check
-#   check_reports       fill PROBLEMS for what runs after the stages: XLSX / XLSX_LAYOUT (review.xlsx)
+#   check_reports       fill PROBLEMS for what runs after the stages: XLSX / XLSX_LAYOUT (review.xlsx), NOTIFY
+#                       (Telegram: curl, jq and the settings; under --detach the notify.env file; no network here)
 #   show_stages         print the --list table (also `vmbench list`)
 
 # shellcheck source=lib/rawdev.sh
@@ -35,6 +36,7 @@ check_stage() { # fills PROBLEMS with what stops this stage from running
 # check_reports: review.xlsx at the end of the run needs openpyxl for python3 -I, and a layout that parses
 check_reports() {
   PROBLEMS=()
+  check_notify
   [ "${XLSX:-0}" = 1 ] || return 0
   if ! need python3; then PROBLEMS+=("XLSX=1 needs python3"); return; fi
   python3 -I -c 'import openpyxl' 2>/dev/null \
@@ -43,6 +45,20 @@ check_reports() {
   if [ ! -f "$XLSX_LAYOUT" ] || [ ! -r "$XLSX_LAYOUT" ]; then PROBLEMS+=("XLSX_LAYOUT: $XLSX_LAYOUT is not a readable file"); return; fi
   local err
   err=$(python3 -I "$VMBENCH_HOME/xlsx.py" --check-layout "$XLSX_LAYOUT" 2>&1 >/dev/null) || PROBLEMS+=("XLSX_LAYOUT: ${err#error: }")
+}
+
+# check_notify: NOTIFY=1 sends the summary at the end, so everything it needs must be there before the run starts.
+# A --detach run does not get TELEGRAM_* (the launcher file is plain text in the result folder): it needs notify.env.
+check_notify() {
+  [ "${NOTIFY:-0}" = 1 ] || return 0
+  need curl || PROBLEMS+=("NOTIFY=1 needs curl")
+  need jq || PROBLEMS+=("NOTIFY=1 needs jq")
+  if [ -n "${DETACH:-}" ]; then
+    ( unset TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; notify_config 2>/dev/null ) \
+      || PROBLEMS+=("NOTIFY=1 with --detach needs $(notify_env_file) (mode 600) with TELEGRAM_BOT_TOKEN= and TELEGRAM_CHAT_ID= lines: the environment is not passed into the tmux session")
+  elif ! notify_config; then
+    PROBLEMS+=("NOTIFY=1: $NOTIFY_PROBLEM")
+  fi
 }
 
 show_stages() {
