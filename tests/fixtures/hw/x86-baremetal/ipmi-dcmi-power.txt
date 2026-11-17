@@ -1,0 +1,3 @@
+
+    Instantaneous power reading:                   312 Watts
+    Minimum during sampling period:                180 Watts

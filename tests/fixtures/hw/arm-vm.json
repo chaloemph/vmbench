@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "cpu": {
+    "vendor": "ARM",
+    "model": "Neoverse-N1",
+    "family": null,
+    "model_id": "1",
+    "stepping": "r3p1",
+    "microcode": null,
+    "sockets": null,
+    "cores_per_socket": 8,
+    "threads_per_core": 1,
+    "numa_nodes": 1,
+    "mhz_min": null,
+    "mhz_max": null,
+    "cache": {
+      "l1d": "512 KiB (8 instances)",
+      "l1i": "512 KiB (8 instances)",
+      "l2": "8 MiB (8 instances)",
+      "l3": "32 MiB (1 instance)"
+    }
+  },
+  "freq": {
+    "driver": null,
+    "governor": null,
+    "min_khz": null,
+    "max_khz": null,
+    "scaling_min_khz": null,
+    "scaling_max_khz": null,
+    "turbo": null,
+    "smt": "notimplemented",
+    "cpuidle_driver": "psci_idle",
+    "cpuidle_governor": "menu"
+  },
+  "system": {
+    "sys_vendor": "QEMU",
+    "product_name": "KVM Virtual Machine",
+    "product_version": "virt-8.2",
+    "board_vendor": null,
+    "board_name": null,
+    "board_version": null,
+    "bios_vendor": "EFI Development Kit II / OVMF",
+    "bios_version": "0.0.0",
+    "bios_date": "02/06/2015",
+    "bios_release": "0.0",
+    "bmc": {
+      "firmware": null,
+      "manufacturer": null
+    }
+  },
+  "memory": {
+    "slots": null,
+    "populated": null,
+    "dimms": [],
+    "configured_speeds": {},
+    "source": null
+  },
+  "nics": [
+    {
+      "name": "enp0s1",
+      "state": "up",
+      "speed_mbps": null,
+      "mtu": 1500,
+      "pci": "0000:00:01.0",
+      "model": null,
+      "driver": "virtio_net",
+      "driver_version": "1.0.0",
+      "firmware": null,
+      "offloads": {
+        "tcp-segmentation-offload": "on",
+        "generic-segmentation-offload": "on",
+        "generic-receive-offload": "on"
+      }
+    }
+  ],
+  "disks": [
+    {
+      "name": "vda",
+      "model": null,
+      "firmware": null,
+      "size": "100G",
+      "tran": null,
+      "rota": 1
+    }
+  ],
+  "nvme": [],
+  "nvme_models": {},
+  "bmc": {
+    "power_w": null,
+    "temperatures": {},
+    "fans": {}
+  },
+  "unavailable": [
+    "cpufreq: not exposed by the kernel (usual in a VM)",
+    "dmidecode -t bios: needs root or sudo -n",
+    "dmidecode -t memory: needs root or sudo -n",
+    "edac: no DIMMs in /sys/devices/system/edac",
+    "ipmitool mc info: ipmitool is not installed",
+    "nics: ethtool is not installed (no driver, firmware or offloads)"
+  ]
+}

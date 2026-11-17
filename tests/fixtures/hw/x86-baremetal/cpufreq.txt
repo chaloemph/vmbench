@@ -1,0 +1,11 @@
+scaling_driver=intel_pstate
+scaling_governor=performance
+cpuinfo_min_freq=800000
+cpuinfo_max_freq=3400000
+scaling_min_freq=800000
+scaling_max_freq=3400000
+no_turbo=0
+boost=
+smt=on
+cpuidle_driver=intel_idle
+cpuidle_governor=menu

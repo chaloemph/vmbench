@@ -1,0 +1,6 @@
+cpufreq: not exposed by the kernel (usual in a VM)
+dmidecode -t bios: needs root or sudo -n
+dmidecode -t memory: needs root or sudo -n
+edac: no DIMMs in /sys/devices/system/edac
+ipmitool mc info: ipmitool is not installed
+nics: ethtool is not installed (no driver, firmware or offloads)

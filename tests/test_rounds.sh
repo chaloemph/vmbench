@@ -153,7 +153,7 @@ if command -v jq >/dev/null 2>&1; then
 case "$1 $2" in
   "web serve") exec sleep 30 ;;
   "web load") while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done
-    n=$(( 1000 + $(date +%N | cut -c7-8) )); echo "{\"web\":{\"knee_rps\":$n}}" > "$out" ;;
+    n=$(( 1000 + 10#$(date +%N | cut -c7-8) )); echo "{\"web\":{\"knee_rps\":$n}}" > "$out" ;;
   version) echo "cpubench stub" ;;
 esac
 STUB

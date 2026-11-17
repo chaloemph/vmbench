@@ -1,0 +1,14 @@
+state=up
+speed=-1
+mtu=1500
+pci=virtio1
+--- lspci
+00:03.0 Ethernet controller: Red Hat, Inc. Virtio network device
+--- ethtool -i
+driver: virtio_net
+version: 1.0.0
+firmware-version: 
+bus-info: 0000:00:03.0
+--- ethtool -k
+tcp-segmentation-offload: on
+generic-receive-offload: on

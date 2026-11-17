@@ -1,0 +1,10 @@
+sys_vendor: QEMU
+product_name: Standard PC (Q35 + ICH9, 2009)
+product_version: pc-q35-8.2
+board_vendor: 
+board_name: 
+board_version: 
+bios_vendor: SeaBIOS
+bios_version: 1.16.3-debian-1.16.3-2
+bios_date: 04/01/2014
+bios_release: 0.0

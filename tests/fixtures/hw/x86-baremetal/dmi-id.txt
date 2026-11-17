@@ -1,0 +1,10 @@
+sys_vendor: Example Systems
+product_name: EX-2U-R760
+product_version: 01
+board_vendor: Example Systems
+board_name: EXB-760
+board_version: A02
+bios_vendor: Example BIOS Inc.
+bios_version: 2.1.4
+bios_date: 03/14/2026
+bios_release: 2.1
