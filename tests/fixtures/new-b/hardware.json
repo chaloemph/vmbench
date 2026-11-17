@@ -6,7 +6,7 @@
     "family": "6",
     "model_id": "143",
     "stepping": "8",
-    "microcode": "0x2b000590",
+    "microcode": "0x2b000603",
     "sockets": 2,
     "cores_per_socket": 32,
     "threads_per_core": 2,
@@ -101,7 +101,7 @@
       "model": "Example Networks EX-25G Dual Port Adapter (rev 01)",
       "driver": "exnic",
       "driver_version": "6.8.0-45-generic",
-      "firmware": "22.36.1010 (EX_0000000001)",
+      "firmware": "22.39.2048 (EX_0000000001)",
       "offloads": {
         "tcp-segmentation-offload": "on",
         "tx-tcp-segmentation": "on",
@@ -161,9 +161,9 @@
     "EXSSD PM9A3 3.84TB": 3
   },
   "bmc": {
-    "power_w": 312,
+    "power_w": 290,
     "temperatures": {
-      "Inlet Temp": 24,
+      "Inlet Temp": 26,
       "CPU1 Temp": 52
     },
     "fans": {
@@ -171,5 +171,7 @@
       "FAN2": 6120
     }
   },
-  "unavailable": []
+  "unavailable": [
+    "smartctl -i /dev/nvme0n1: needs root or sudo -n"
+  ]
 }
