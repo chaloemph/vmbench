@@ -32,6 +32,36 @@ In a comparison (`vmbench report compare A B`), the first folder is the baseline
 
 Always read the warnings at the top of a report first. Different vmbench or cpubench versions, `QUICK=1`, different test sizes or vCPU counts, high CPU steal and failed steps can each make a comparison meaningless.
 
+## Excel review sheet
+
+`vmbench report xlsx DIR [DIR...]` writes the same numbers as `report.md` into a workbook for a review meeting (`DIR1/review.xlsx` unless `-o` says otherwise; the first folder is the baseline). It needs openpyxl, which `report show` and `report compare` do not: `sudo apt-get install python3-openpyxl`.
+
+The rows come from the metric catalog (`vmbench run --metrics`), so every ID has a row whether a run measured it or not, and an empty value always says why in the Note column: `stage not run`, the failed step (`disk / fio randread8k = FAIL exit 1, ...`), or `no value`.
+
+| Sheet | What is in it |
+|---|---|
+| Review | `Section, Details, Tooling, Owner, Priority, Unit, Better`, then for each run `<label>` (the median), `CV <label>`, `Rounds <label>` (how many values the run really has); with two or more runs `Diff % <label> vs <baseline>` (a value, not a formula) and `Verdict <label>` (the verdict of `report compare`); then every single value `<label> r1, r2, ...`; `Note`; `ID`. Grey row: measured once. Orange CV: 5% or more. |
+| Hardware | every field of `hardware.json`, one column per run and `Same?`; DIMMs, NICs, disks one row each. A run without `hardware.json` (vmbench v0.1.0 or older) has an empty column and a note; if it has `hardware.txt`, each of its sections is one cell. |
+| Summary | the environment table and the warnings of `report.md`, and how to read the colours and verdicts |
+| CPU 1t vs max | the 1-thread and all-vCPU value of every CPU test and their ratio |
+| Raw `<label>` | `results.tsv` of each run as it is |
+
+**layout.tsv** arranges the Review sheet the way a team's checklist is arranged. It is the team's file, kept outside the repository and passed with `--layout FILE`; `vmbench report layout > layout.tsv` prints a starting one with every ID. UTF-8, tab separated, the first line is the header, `#` starts a comment:
+
+```
+section	id	name	owner	priority	note
+CPU	hw:cpu.stepping	CPU stepping	Vendor	Must have
+	cpu.sysbench.prime.1t	sysbench 1 thread	Team A	Must have	not for x86 vs ARM (compiler)
+Application		Node JS transactions	Team D	Nice to have
+```
+
+- `section`: a heading row appears where it changes; empty = the section of the row above
+- `id`: a metric ID (an unknown one is an error that names the ID and the line); `hw:<path>` for a field of `hardware.json` such as `hw:system.bios_version`, `hw:memory.populated` or `hw:nics[].firmware` (the value is text and the verdict is `same` / `differs`; a path that is not in the file gives an empty cell and `not in hardware.json`); or empty for a row filled in by hand
+- `name`: empty = the "what it measures" text of the catalog; `owner`, `priority`: any text; `note`: added to the Note column
+- every ID the layout does not name is kept, in a last section "Other measured values"
+
+`--lang th` (or `VMBENCH_LANG=th`) gives Thai headings and notes. `vmbench report xlsx` never edits a workbook it did not write: an `-o` file that exists and was not made by vmbench is refused.
+
 ## Ideas that apply to every stage
 
 **Throughput and latency are different questions.** Throughput (IOPS, MB/s, TPS, RPS, Gbps) is how much work the machine finishes per second when it is kept busy. Latency (us, ms, ns) is how long one piece of work takes. A machine can have high throughput and poor latency at the same time, and users usually feel latency.

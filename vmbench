@@ -7,7 +7,10 @@
 #   vmbench list                            show the stages and whether this machine is ready for them (= run --list)
 #   vmbench report show DIR                 tables for one result folder          (wraps report.py)
 #   vmbench report compare DIR DIR [DIR..]  compare result folders, first is the baseline
-#                                           (both: --lang th or VMBENCH_LANG=th for Thai text, English by default)
+#   vmbench report xlsx DIR [DIR..] [--layout FILE] [-o OUT.xlsx]
+#                                           Excel review sheet (default DIR1/review.xlsx; needs python3-openpyxl)
+#   vmbench report layout                   print a starting layout.tsv for --layout (every metric ID)
+#                                           (all four: --lang th or VMBENCH_LANG=th for Thai text, English by default)
 #   vmbench setup cpubench|postgres         download cpubench / create the PostgreSQL cluster for the pg stage
 #   vmbench version                         print the version
 #   vmbench help                            this text
@@ -49,11 +52,15 @@ main_usage() { sed -n '2,/^set -uo/{/^set -uo/d;s/^# \{0,1\}//;p}' "$VMBENCH_HOM
 
 cmd_report() {
   case ${1:-} in
-    show|compare) ;;
-    "") die "report needs a subcommand: show DIR | compare DIR DIR [DIR...]  (see: vmbench help)" ;;
-    *) die "unknown report subcommand '$1' (use show or compare)" ;;
+    show|compare|xlsx|layout) ;;
+    "") die "report needs a subcommand: show DIR | compare DIR DIR [DIR...] | xlsx DIR [DIR...] | layout  (see: vmbench help)" ;;
+    *) die "unknown report subcommand '$1' (use show, compare, xlsx or layout)" ;;
   esac
   need python3 || die "python3 is required for reports"
+  case $1 in
+    xlsx) shift; exec python3 -I "$VMBENCH_HOME/xlsx.py" "$@" ;;
+    layout) shift; exec python3 -I "$VMBENCH_HOME/xlsx.py" --print-layout "$@" ;;
+  esac
   exec python3 -I "$VMBENCH_HOME/report.py" "$@"
 }
 

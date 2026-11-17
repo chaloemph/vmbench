@@ -1,0 +1,14 @@
+# layout.tsv for tests/test_xlsx.py (synthetic): sections, hw: rows, rows filled in by hand, notes, an ID no run has
+section	id	name	owner	priority	note
+CPU	hw:cpu.model	CPU model / stepping	Vendor	Must have
+	hw:cpu.stepping	CPU stepping
+	cpu.sysbench.prime.1t	sysbench 1 thread	Team A	Must have	not for x86 vs ARM (compiler)
+	cpu.sysbench.prime.max		Team A	Should have
+Memory	mem.stream.triad.max	STREAM Triad	Team B	Must have	all vCPUs, pinned source
+	hw:memory.populated	DIMMs populated
+	hw:nics[].firmware	NIC firmware
+	hw:cpu.no_such_key	not a key
+Disk	disk.fio.db-randread-8k	8k random read (DB)	Team C	Must have
+NVMe	nvme.fio.seq-read-1m.all-disks	all NVMe sequential read
+Application		Node JS transactions	Team D	Nice to have	measured with the real app
+		PSU failover	DC team	Must have

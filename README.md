@@ -33,7 +33,7 @@ sudo apt-get install -y sysbench fio 7zip iperf3 sockperf stressapptest lmbench 
 sudo apt-get install -y stress-ng linux-tools-common linux-tools-$(uname -r) ipmitool nvme-cli smartmontools dmidecode ethtool pciutils   # bare metal: sustain, nvme, hardware.txt
 ```
 
-The `mem` stage compiles STREAM from a pinned source file, see [STREAM source](#stream-source). Running the benchmark itself needs no `sudo`. The test files are created under `~/bench-data` (8 GB for `disk`, so keep at least 15 GB free).
+`python3-openpyxl` is optional and only needed for `vmbench report xlsx` (`sudo apt-get install python3-openpyxl`; vmbench runs python with `-I`, so a `pip install --user` copy is not seen: use the apt package, or a venv whose `python` runs `xlsx.py`). The `mem` stage compiles STREAM from a pinned source file, see [STREAM source](#stream-source). Running the benchmark itself needs no `sudo`. The test files are created under `~/bench-data` (8 GB for `disk`, so keep at least 15 GB free).
 
 ## Install
 
@@ -207,6 +207,17 @@ Every run ends by printing tables and writing `report.md` and `report.html` into
 
 (`python3 report.py show|compare ...` does the same.) `compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only.
 
+For a review meeting, the same numbers go into an Excel workbook (needs `python3-openpyxl`, see [Requirements](#requirements)):
+
+```bash
+./vmbench report xlsx ~/bench-results/vm-a                                  # ~/bench-results/vm-a/review.xlsx
+./vmbench report xlsx ~/bench-results/x86 ~/bench-results/arm -o review.xlsx # first folder is the baseline
+./vmbench report layout > layout.tsv                                       # a starting layout: every metric ID
+./vmbench report xlsx ~/bench-results/x86 --layout layout.tsv               # rows arranged like the team's checklist
+```
+
+Every metric ID has a row (an empty value says why: stage not run, the failed step, no value), with the median, CV, the real number of rounds and every single value of each run, and with two or more runs the difference and the verdict of `report compare`. Other sheets: the `hardware.json` fields side by side, the environment and warnings, CPU 1 thread vs all vCPUs, and `results.tsv` as it is. `layout.tsv` (kept by the team, outside this repository) sets sections, names, owner, priority, notes, rows from `hardware.json` (`hw:cpu.stepping`) and rows filled in by hand. See [docs/reading-results.md](docs/reading-results.md#excel-review-sheet).
+
 Marks and warnings you will see:
 
 - `*` the value was measured once (one round), so its variation is unknown. With the default rounds only `disk` values (1 round) and the CPU steal context values still carry it; `--disk-rounds` removes it from disk
@@ -232,13 +243,14 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 
 | File | Purpose |
 |---|---|
-| `vmbench` | entry script: `run`, `list`, `report`, `setup`, `version`, `help` |
+| `vmbench` | entry script: `run`, `list`, `report` (`show`, `compare`, `xlsx`, `layout`), `setup`, `version`, `help` |
 | `run-benchmark.sh` | compatibility wrapper, the same as `vmbench run` |
 | `lib/` | shared helpers: `common.sh` (logging, `die`), `metrics.sh` (the metric table and `rec`), `preflight.sh`, `rawdev.sh` (raw-device safety, `NVME_DEVS`), `hw.sh` (`as_root`, the BMC power reading), `meta.sh` (`meta.json`), `stages.sh` (stage loader), `run.sh` (option parsing and the run), `run-usage.txt` (the `--help` text) |
 | `stages/<stage>.sh` | one file per stage: `cpu`, `mem`, `disk`, `nvme`, `pg`, `net`, `web`, `sustain`, `burnin`, `info`. Adding a stage means adding one file, see [docs/tests.md](docs/tests.md) |
 | `lib/stream.sh` | the pinned STREAM source: URL, sha256, download and check |
 | `report.py` | tables and comparisons, English and Thai message catalogs (standard library only) |
 | `hw.py` | `hardware.json` from the raw hardware outputs in `<result>/hw/` (standard library only) |
+| `xlsx.py` | the Excel review sheet (`vmbench report xlsx`, `report layout`); needs openpyxl, only for writing the workbook |
 | `docs/tests.md` | every metric ID: what it measures, tool, unit, direction, stage; how to add a stage |
 | `docs/reading-results.md` | how to read a report, and what each value means for real work; Thai version in `docs/reading-results.th.md` |
 | `get.sh` | the installer behind the one-line `curl ... \| sh` (POSIX sh, sha256-verified release download, no sudo) |

@@ -34,6 +34,38 @@
 
 อ่านคำเตือนที่ด้านบนของรายงานก่อนเสมอ เวอร์ชัน vmbench หรือ cpubench ที่ต่างกัน, `QUICK=1`, ขนาดการทดสอบหรือจำนวน vCPU ที่ต่างกัน, CPU steal สูง และ step ที่ล้ม แต่ละข้อทำให้การเปรียบเทียบไร้ความหมายได้
 
+<a id="excel-review-sheet"></a>
+
+## ชีท Excel สำหรับ review
+
+`vmbench report xlsx DIR [DIR...]` เขียนตัวเลขชุดเดียวกับ `report.md` ลงไฟล์ Excel สำหรับประชุม review (`DIR1/review.xlsx` ถ้าไม่ระบุ `-o`; โฟลเดอร์แรกคือ baseline) ต้องมี openpyxl ซึ่ง `report show` และ `report compare` ไม่ต้องใช้: `sudo apt-get install python3-openpyxl`
+
+แถวมาจาก catalog ของ metric (`vmbench run --metrics`) ทุก ID จึงมีแถวเสมอไม่ว่าจะวัดหรือไม่ และค่าที่ว่างจะบอกเหตุผลในคอลัมน์ Note เสมอ: `stage not run`, step ที่ล้ม (`disk / fio randread8k = FAIL exit 1, ...`) หรือ `no value`
+
+| ชีท | มีอะไร |
+|---|---|
+| Review | `Section, Details, Tooling, Owner, Priority, Unit, Better` แล้วต่อรัน `<label>` (ค่ามัธยฐาน), `CV <label>`, `Rounds <label>` (จำนวนค่าที่รันนั้นมีจริง); ถ้ามีสองรันขึ้นไป `Diff % <label> vs <baseline>` (เป็นค่า ไม่ใช่สูตร) และ `Verdict <label>` (ผลเดียวกับ `report compare`); ตามด้วยค่าแต่ละรอบ `<label> r1, r2, ...`; `Note`; `ID` แถวสีเทา: วัดรอบเดียว CV สีส้ม: 5% ขึ้นไป |
+| Hardware | ทุกฟิลด์ของ `hardware.json` คอลัมน์ละรัน และ `Same?`; DIMM, NIC, ดิสก์ แถวละตัว รันที่ไม่มี `hardware.json` (vmbench v0.1.0 หรือเก่ากว่า) คอลัมน์ว่างพร้อมหมายเหตุ ถ้ามี `hardware.txt` แต่ละหัวข้อจะอยู่ในเซลล์เดียว |
+| Summary | ตารางสภาพแวดล้อมและคำเตือนของ `report.md` และวิธีอ่านสีและผล |
+| CPU 1t vs max | ค่า 1 thread และทุก vCPU ของการทดสอบ CPU แต่ละตัว และอัตราส่วน |
+| Raw `<label>` | `results.tsv` ของแต่ละรันตามจริง |
+
+**layout.tsv** จัดชีท Review ให้เรียงแบบ checklist ของทีม เป็นไฟล์ของทีม เก็บไว้นอก repo และส่งด้วย `--layout FILE`; `vmbench report layout > layout.tsv` พิมพ์ไฟล์ตั้งต้นที่มีทุก ID เป็น UTF-8 คั่นด้วย tab บรรทัดแรกเป็น header และ `#` คือ comment:
+
+```
+section	id	name	owner	priority	note
+CPU	hw:cpu.stepping	CPU stepping	Vendor	Must have
+	cpu.sysbench.prime.1t	sysbench 1 thread	Team A	Must have	ไม่ใช้ตัดสิน x86 vs ARM (ขึ้นกับ compiler)
+Application		Node JS transactions	Team D	Nice to have
+```
+
+- `section`: มีแถวหัวข้อทุกครั้งที่เปลี่ยน ว่าง = หัวข้อเดียวกับแถวบน
+- `id`: metric ID (ID ที่ไม่รู้จักเป็น error ที่บอกชื่อ ID และบรรทัด); `hw:<path>` สำหรับฟิลด์ของ `hardware.json` เช่น `hw:system.bios_version`, `hw:memory.populated`, `hw:nics[].firmware` (ค่าเป็นข้อความ ผลคือ `same` / `differs` path ที่ไม่มีในไฟล์ได้เซลล์ว่างกับ `not in hardware.json`); หรือว่างสำหรับแถวที่กรอกเอง
+- `name`: ว่าง = ข้อความ "what it measures" ของ catalog; `owner`, `priority`: ข้อความอะไรก็ได้; `note`: ต่อท้ายคอลัมน์ Note
+- ID ที่ layout ไม่ได้พูดถึงไม่หาย ไปอยู่หัวข้อสุดท้าย "Other measured values"
+
+`--lang th` (หรือ `VMBENCH_LANG=th`) ให้หัวคอลัมน์และหมายเหตุเป็นภาษาไทย `vmbench report xlsx` ไม่แก้ไฟล์ Excel ที่ไม่ได้สร้างเอง: ไฟล์ `-o` ที่มีอยู่แล้วและไม่ได้สร้างโดย vmbench จะถูกปฏิเสธ
+
 <a id="ideas-that-apply-to-every-stage"></a>
 
 ## หลักที่ใช้กับทุก stage
