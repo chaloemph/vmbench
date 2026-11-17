@@ -205,7 +205,7 @@ Every run ends by printing tables and writing `report.md` and `report.html` into
 ./vmbench report show    ~/bench-results/vm-a --lang th               # Thai text
 ```
 
-(`python3 report.py show|compare ...` does the same.) `compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only.
+(`python3 report.py show|compare ...` does the same.) `compare` accepts two or more folders, prints to stdout, and writes `report.md` and `report.html` into `./compare-<a>-vs-<b>/`. Add `--no-files` for stdout only. When every folder has `hardware.json`, `compare` also lists the hardware fields that differ (firmware, BIOS, microcode, DIMMs, NICs, disks) after the environment table.
 
 For a review meeting, the same numbers go into an Excel workbook (needs `python3-openpyxl`, see [Requirements](#requirements)):
 

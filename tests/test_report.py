@@ -343,5 +343,88 @@ class CommandLine(unittest.TestCase):
         self.assertNotIn(b"Traceback", err)
 
 
+
+class HardwareDifferences(unittest.TestCase):
+    """report compare: the hardware.json fields that differ (new-a and new-b differ on purpose, see their files)."""
+    WANT = ["cpu.microcode", "system.bios_version", "memory.populated", "memory.dimms count", "memory.dimms CPU1_B1",
+            "memory.configured_speeds", "nics ens1f0"]
+
+    def setUp(self):
+        report.set_lang("en")
+        self.addCleanup(report.set_lang, "en")
+
+    def test_only_the_fields_that_differ(self):
+        table, line = report.hw_differences([fixture("new-a"), fixture("new-b")])
+        self.assertEqual([r[0] for r in table.rows], self.WANT)
+        self.assertEqual(table.headers, ["Item", "new-a", "new-b"])
+        rows = {r[0]: r[1:] for r in table.rows}
+        self.assertEqual(rows["system.bios_version"], ["2.1.4", "2.2.0"])
+        self.assertEqual(rows["memory.dimms count"], ["3", "2"])
+        self.assertEqual(rows["memory.dimms CPU1_B1"][1], "-")
+        self.assertEqual(rows["nics ens1f0"], ["firmware=22.36.1010 (EX_0000000001)", "firmware=22.39.2048 (EX_0000000001)"])
+        self.assertEqual(line, "hardware.json: 54 fields compared, 6 differ")
+
+    def test_same_fields_bmc_readings_and_reasons_are_not_listed(self):
+        table, _ = report.hw_differences([fixture("new-a"), fixture("new-b")])
+        items = " ".join(r[0] for r in table.rows)
+        for same in ("cpu.model", "cpu.stepping", "system.bmc.firmware", "nics eno1", "disks", "nvme"):
+            self.assertNotIn(same, items)
+        self.assertNotIn("bmc.power_w", items)          # differs in the fixtures, but is a reading, not a fact
+        self.assertNotIn("unavailable", items)           # differs too: reasons, not hardware
+
+    def test_identical_machines_give_only_the_summary_line(self):
+        table, line = report.hw_differences([fixture("new-a"), fixture("new-a")])
+        self.assertIsNone(table)
+        self.assertEqual(line, "hardware.json: 54 fields compared, 0 differ")
+
+    def test_a_run_without_hardware_json_gives_no_table_and_a_warning(self):
+        self.assertEqual(report.hw_differences([fixture("vm-a"), fixture("vm-b")]), (None, None))
+        for pair, missing in ((("vm-a", "vm-b"), "vm-a, vm-b"), (("new-a", "vm-a"), "vm-a")):
+            r = cli("compare", *[os.path.join(FIX, n) for n in pair], "--no-files")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("Hardware differences", r.stdout)
+            self.assertIn(f"- no hardware.json for {missing} (", r.stdout)
+
+    def test_text_md_and_html(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = cli("compare", os.path.join(FIX, "new-a"), os.path.join(FIX, "new-b"), "--out", d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertLess(out.index("== Environment"), out.index("== Hardware differences =="))
+            self.assertIn("hardware.json: 54 fields compared, 6 differ", out)
+            with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
+                md = f.read()
+            self.assertIn("## Hardware differences", md)
+            self.assertIn("| system.bios_version | 2.1.4 | 2.2.0 |", md)
+            with open(os.path.join(d, "report.html"), encoding="utf-8") as f:
+                page = f.read()
+            self.assertIn("<h2>Hardware differences</h2>", page)
+            self.assertIn("6 differ", page)
+            p = Balanced()
+            p.feed(page)
+            self.assertEqual((p.errors, p.stack), (0, []))
+
+    def test_thai(self):
+        r = cli("compare", os.path.join(FIX, "new-a"), os.path.join(FIX, "new-b"), "--no-files", "--lang", "th")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("== ฮาร์ดแวร์ที่ต่างกัน ==", r.stdout)
+        self.assertIn("รายการ", r.stdout)
+        self.assertIn("เทียบ 54 ฟิลด์ ต่างกัน 6 ฟิลด์", r.stdout)
+        r = cli("compare", os.path.join(FIX, "vm-a"), os.path.join(FIX, "vm-b"), "--no-files", "--lang", "th")
+        self.assertIn("ไม่มี hardware.json ของ vm-a, vm-b", r.stdout)
+
+    def test_show_is_unchanged(self):
+        r = cli("show", os.path.join(FIX, "new-a"), "--no-files")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Hardware differences", r.stdout)
+        self.assertNotIn("hardware.json", r.stdout)
+
+    def test_xlsx_uses_the_same_helpers(self):
+        spec = importlib.util.spec_from_file_location("xlsx_hw", os.path.join(ROOT, "xlsx.py"))
+        xlsx = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(xlsx)
+        for name in ("hw_json", "hw_text", "hw_get", "flatten_hw", "_MISSING"):
+            self.assertIs(getattr(xlsx, name), getattr(xlsx.report, name), name)
+
 if __name__ == "__main__":
     unittest.main()

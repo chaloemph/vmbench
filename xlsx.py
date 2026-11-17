@@ -243,58 +243,8 @@ def print_layout(entries):
 
 # ---- values ----
 
-def hw_json(run):
-    """hardware.json of a run as a dict, None when there is none (or it cannot be read)."""
-    p = os.path.join(run.path, "hardware.json")
-    if not os.path.isfile(p):
-        return None
-    try:
-        with open(p, encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else None
-    except (OSError, ValueError):
-        return None
-
-
-_MISSING = object()
-
-
-def hw_text(v):
-    """A hardware.json value as cell text."""
-    if v is None:
-        return ""
-    if isinstance(v, bool):
-        return "yes" if v else "no"
-    if isinstance(v, float) and v == int(v):
-        return str(int(v))
-    if isinstance(v, dict):
-        return ", ".join(f"{k}: {hw_text(x)}" for k, x in v.items())
-    if isinstance(v, list):
-        return "\n".join(hw_text(x) for x in v)
-    return str(v)
-
-
-def hw_get(d, path):
-    """The value at a layout path such as cpu.stepping or nics[].firmware; _MISSING when the path is not there."""
-    cur = [d]
-    for part in path.split("."):
-        many = part.endswith("[]")
-        key = part[:-2] if many else part
-        nxt = []
-        for c in cur:
-            if not isinstance(c, dict) or key not in c:
-                return _MISSING
-            v = c[key]
-            if many:
-                if not isinstance(v, list):
-                    return _MISSING
-                nxt.extend(v)
-            else:
-                nxt.append(v)
-        cur = nxt
-        if "[]" in path and not cur:
-            return []
-    return cur if "[]" in path else cur[0]
+# hardware.json helpers live in report.py, so the Hardware sheet and `report compare` read it the same way
+hw_json, hw_text, hw_get, flatten_hw, _MISSING = report.hw_json, report.hw_text, report.hw_get, report.flatten_hw, report._MISSING
 
 
 def match_steps(ident, problems):
@@ -511,31 +461,6 @@ def review_sheet(book, runs, rows, entries):
     book.widths(ws, [14, 44, 12, 14, 10, 10, 8] + [14, 8, 8] * len(runs) + [12, 22] * (len(runs) - 1)
                 + [11] * sum(maxr) + [44, 34])
     return ws
-
-
-def flatten_hw(d):
-    """[(section, item, text)] of a hardware.json: scalars and small dicts one row each, a list of records one row
-    per record (named by its locator / name / ctrl)."""
-    out = []
-
-    def walk(section, prefix, v):
-        if isinstance(v, dict) and section not in ("nvme_models",) and not prefix.endswith(
-                ("configured_speeds", "temperatures", "fans", "offloads")):
-            for k, x in v.items():
-                walk(section, f"{prefix}.{k}" if prefix else k, x)
-        elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
-            for x in v:
-                name = next((x.get(k) for k in ("locator", "name", "ctrl") if x.get(k)), "?")
-                rest = {k: y for k, y in x.items() if y != name}
-                out.append((section, f"{prefix} {name}", "; ".join(f"{k}={hw_text(y)}" for k, y in rest.items())))
-        else:
-            out.append((section, prefix or section, hw_text(v)))
-
-    for key, v in d.items():
-        if key == "schema":
-            continue
-        walk(key, key if not isinstance(v, dict) else "", v)
-    return out
 
 
 def hardware_txt_sections(run):
