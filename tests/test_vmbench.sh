@@ -103,6 +103,9 @@ PY
 else echo "skip XLSX=1 run (no openpyxl)"; fi
 
 # --- NOTIFY=1: pre-flight refusals (no network), and the summary and files sent at the end, also after a FAIL
+# notify.env is looked up in ${XDG_CONFIG_HOME:-$HOME/.config}: GitHub runners set XDG_CONFIG_HOME, so drop it here
+# to keep the lookup inside the test HOME (and never read a real notify.env of the machine)
+unset XDG_CONFIG_HOME
 rm -rf "$TMP/out"
 expect "NOTIFY=yes is refused"                    2 "NOTIFY needs 1 or 0"       env NOTIFY=yes bash "$VM" run --only info
 expect "NOTIFY=1 without Telegram settings: pre-flight exit 2" 2 "NOTIFY=1: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID" env -u TELEGRAM_BOT_TOKEN -u TELEGRAM_CHAT_ID NOTIFY=1 bash "$VM" run --only info

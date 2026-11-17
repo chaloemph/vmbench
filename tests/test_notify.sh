@@ -115,7 +115,7 @@ reset_log; nt "${WITH[@]}" CURL_FAIL=getChat -- --check
 [ "$RC" = 1 ] && [[ $OUTPUT == *"getChat failed"* ]] && no_token "$OUTPUT" && check "--check with a chat the bot cannot see: exit 1" 0 || check "--check getChat failure" 1 "rc=$RC $OUTPUT"
 
 # --- bash -x: the token is not traced
-OUTPUT=$(env HOME="$TMP/home" PATH="$TMP/bin:$PATH" "${WITH[@]}" bash -x "$ROOT/vmbench" notify --text hi "$TMP/files/report.md" 2>&1); RC=$?
+OUTPUT=$(env -u XDG_CONFIG_HOME HOME="$TMP/home" PATH="$TMP/bin:$PATH" "${WITH[@]}" bash -x "$ROOT/vmbench" notify --text hi "$TMP/files/report.md" 2>&1); RC=$?
 [ "$RC" = 0 ] && [[ $OUTPUT == *"+ "* ]] && no_token "$OUTPUT" && ! grep -qF -- "$CHAT" <<<"$OUTPUT" \
   && check "bash -x: neither the token nor the chat id is traced" 0 || check "bash -x leaks" 1 "rc=$RC $(grep -F -e SECRET -e "$CHAT" <<<"$OUTPUT" | head -3)"
 
