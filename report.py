@@ -218,6 +218,11 @@ MESSAGES = {
         "warn.vmbench": "vmbench versions differ: {values}",
         "warn.arch": "different architectures: sysbench cpu counts prime numbers and depends heavily on the compiler, "
                      "so do not judge CPU speed by it alone",
+        "hwdiff.title": "Hardware differences",
+        "hwdiff.item": "Item",
+        "hwdiff.summary": "hardware.json: {n} fields compared, {m} differ",
+        "hwdiff.count": "{name} count",
+        "warn.no_hwjson": "no hardware.json for {labels} (vmbench v0.1.0 or older, or the info stage failed), so hardware differences are not shown",
         "warn.disk": "Disk: measured on a file on the OS disk, so the numbers may include host cache and hypervisor settings. "
                      "Check the cache mode before concluding which storage is better",
     },
@@ -273,6 +278,11 @@ MESSAGES = {
         "warn.vmbench": "vmbench คนละเวอร์ชัน: {values}",
         "warn.arch": "คนละสถาปัตยกรรม: sysbench cpu คำนวณจำนวนเฉพาะ ผลขึ้นกับ compiler มาก "
                      "อย่าใช้ตัวเดียวสรุปความแรงของ CPU",
+        "hwdiff.title": "ฮาร์ดแวร์ที่ต่างกัน",
+        "hwdiff.item": "รายการ",
+        "hwdiff.summary": "hardware.json: เทียบ {n} ฟิลด์ ต่างกัน {m} ฟิลด์",
+        "hwdiff.count": "จำนวน {name}",
+        "warn.no_hwjson": "ไม่มี hardware.json ของ {labels} (vmbench v0.1.0 หรือเก่ากว่า หรือ stage info ล้มเหลว) จึงไม่แสดงความต่างของฮาร์ดแวร์",
         "warn.disk": "Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
                      "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า",
     },
@@ -598,6 +608,150 @@ def disk_warning(runs):
     return []
 
 
+# ---- hardware.json (shared with xlsx.py) ----
+# hw.py writes <result>/hardware.json (schema 1); runs of vmbench v0.1.0 or older have none.
+
+def hw_json(run):
+    """hardware.json of a run as a dict, None when there is none (or it cannot be read)."""
+    p = os.path.join(run.path, "hardware.json")
+    if not os.path.isfile(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+_MISSING = object()
+
+
+def hw_text(v):
+    """A hardware.json value as cell text."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    if isinstance(v, float) and v == int(v):
+        return str(int(v))
+    if isinstance(v, dict):
+        return ", ".join(f"{k}: {hw_text(x)}" for k, x in v.items())
+    if isinstance(v, list):
+        return "\n".join(hw_text(x) for x in v)
+    return str(v)
+
+
+def hw_get(d, path):
+    """The value at a layout path such as cpu.stepping or nics[].firmware; _MISSING when the path is not there."""
+    cur = [d]
+    for part in path.split("."):
+        many = part.endswith("[]")
+        key = part[:-2] if many else part
+        nxt = []
+        for c in cur:
+            if not isinstance(c, dict) or key not in c:
+                return _MISSING
+            v = c[key]
+            if many:
+                if not isinstance(v, list):
+                    return _MISSING
+                nxt.extend(v)
+            else:
+                nxt.append(v)
+        cur = nxt
+        if "[]" in path and not cur:
+            return []
+    return cur if "[]" in path else cur[0]
+
+
+def flatten_hw(d):
+    """[(section, item, text)] of a hardware.json: scalars and small dicts one row each, a list of records one row
+    per record (named by its locator / name / ctrl)."""
+    out = []
+
+    def walk(section, prefix, v):
+        if isinstance(v, dict) and section not in ("nvme_models",) and not prefix.endswith(
+                ("configured_speeds", "temperatures", "fans", "offloads")):
+            for k, x in v.items():
+                walk(section, f"{prefix}.{k}" if prefix else k, x)
+        elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            for x in v:
+                name = next((x.get(k) for k in ("locator", "name", "ctrl") if x.get(k)), "?")
+                rest = {k: y for k, y in x.items() if y != name}
+                out.append((section, f"{prefix} {name}", "; ".join(f"{k}={hw_text(y)}" for k, y in rest.items())))
+        else:
+            out.append((section, prefix or section, hw_text(v)))
+
+    for key, v in d.items():
+        if key == "schema":
+            continue
+        walk(key, key if not isinstance(v, dict) else "", v)
+    return out
+
+
+HW_LISTS = (("memory", "dimms"), ("nics", "nics"), ("disks", "disks"), ("nvme", "nvme"))   # (section, item prefix)
+HW_NOT_COMPARED = ("bmc", "unavailable")   # readings at the start of the run and reasons, not facts of the machine
+
+
+def hw_record_diff(vals):
+    """Cells of one row: a record present in every run ("k=v; k=v", one DIMM / NIC / disk) shows only its parts that
+    differ; anything else is shown whole."""
+    if not all(vals) or not all("=" in v for v in vals):
+        return vals
+    parts = [collections.OrderedDict(p.split("=", 1) for p in v.split("; ") if "=" in p) for v in vals]
+    keys = [k for k in parts[0] if len({p.get(k) for p in parts}) > 1] + [
+        k for p in parts[1:] for k in p if k not in parts[0]]
+    if not keys:
+        return vals
+    return ["; ".join(f"{k}={p.get(k, '-')}" for k in dict.fromkeys(keys)) for p in parts]
+
+
+def hw_differences(runs):
+    """For compare: (Table of the hardware.json fields that differ or None, summary line), or (None, None) when a run
+    has no hardware.json. Lists (DIMMs, NICs, disks, NVMe) pair up by locator / name / ctrl; a list whose length
+    differs also gets a "<list> count" row."""
+    docs = [hw_json(r) for r in runs]
+    if any(d is None for d in docs):
+        return None, None
+    flat = [collections.OrderedDict(((s, i), v) for s, i, v in flatten_hw(d) if s not in HW_NOT_COMPARED) for d in docs]
+    sections, keys = [], []
+    for f in flat:
+        for k in f:
+            if k[0] not in sections:
+                sections.append(k[0])
+            if k not in keys:
+                keys.append(k)
+    keys.sort(key=lambda k: sections.index(k[0]))   # stable: each run's order inside a section
+    counts = {}
+    for sec, prefix in HW_LISTS:
+        path = sec if sec == prefix else f"{sec}.{prefix}"
+        n = []
+        for d in docs:
+            v = hw_get(d, path)
+            n.append(len(v) if isinstance(v, list) else 0)
+        if len(set(n)) > 1:
+            counts[(sec, prefix)] = n
+    rows, differ, shown = [], 0, set()
+    for sec, item in keys:
+        vals = [f.get((sec, item)) or "" for f in flat]
+        if len(set(vals)) == 1:
+            continue
+        differ += 1
+        for (lsec, prefix), n in counts.items():
+            if lsec == sec and item.startswith(prefix + " ") and (lsec, prefix) not in shown:
+                shown.add((lsec, prefix))
+                name = prefix if lsec == prefix else f"{lsec}.{prefix}"
+                rows.append([t("hwdiff.count", name=name)] + [str(c) for c in n])
+        label = item if item.split(" ")[0] == sec else f"{sec}.{item}"
+        rows.append([label] + [(v or "-").replace("\n", " / ") for v in hw_record_diff(vals)])
+    line = t("hwdiff.summary", n=len(keys), m=differ)
+    if not rows:
+        return None, line
+    table = Table(t("hwdiff.title"), [t("hwdiff.item")] + [r.label for r in runs], ["l"] * (len(runs) + 1), rows)
+    return table, line
+
+
 # ---- show ----
 
 def show_tables(run):
@@ -749,8 +903,17 @@ def text_table(t):
                      + [line(r) for r in rows])
 
 
-def render_text(title, env, main, warnings, summary, notes):
+def hw_parts(hw, table_fn, heading):
+    """The hardware differences block (compare only): its table, or its heading, then the summary line."""
+    table, line = hw or (None, None)
+    if not line:
+        return []
+    return [table_fn(table) + "\n\n" + line if table else heading(t("hwdiff.title")) + "\n\n" + line]
+
+
+def render_text(title, env, main, warnings, summary, notes, hw=None):
     parts = [title, "", text_table(env)]
+    parts += ["\n" + p for p in hw_parts(hw, text_table, lambda s: f"== {s} ==")]
     parts += ["\n" + text_table(t) for t in main]
     if summary and summary.rows:
         parts.append("\n" + text_table(summary))
@@ -772,7 +935,7 @@ def md_table(t):
     return "\n".join(out)
 
 
-def render_md(title, env, main, warnings, summary, notes):
+def render_md(title, env, main, warnings, summary, notes, hw=None):
     parts = [f"# {title}"]
     if warnings:
         parts.append(f"## {t('warnings')}\n\n" + "\n".join("- " + w.replace("*", "\\*") for w in warnings))
@@ -780,6 +943,7 @@ def render_md(title, env, main, warnings, summary, notes):
         parts.append(md_table(summary))
     parts += [md_table(t) for t in main]
     parts.append(md_table(env))
+    parts += hw_parts(hw, md_table, lambda s: f"## {s}")
     parts.append("\n\n".join(n.replace("*", "\\*") for n in notes))
     return "\n\n".join(parts) + "\n"
 
@@ -809,6 +973,7 @@ td.better{color:var(--better);background:var(--better-bg)}
 td.worse{color:var(--worse);background:var(--worse-bg)}
 td.same,td.none{color:var(--same)}
 .notes{color:var(--muted);font-size:13px;margin-top:24px}
+.hwsum{color:var(--muted);font-size:13px;margin:8px 0 0}
 .notes p{margin:4px 0}
 """
 
@@ -828,7 +993,7 @@ def html_table(t):
     return "".join(out)
 
 
-def render_html(title, env, main, warnings, summary, notes):
+def render_html(title, env, main, warnings, summary, notes, hw=None):
     body = [f"<h1>{html.escape(title)}</h1>"]
     if warnings:
         items = "".join(f"<li>{html.escape(w)}</li>" for w in warnings)
@@ -837,6 +1002,10 @@ def render_html(title, env, main, warnings, summary, notes):
         body.append(html_table(summary))
     body += [html_table(t) for t in main]
     body.append(html_table(env))
+    table, line = hw or (None, None)
+    if line:
+        body.append(html_table(table) if table else f"<h2>{html.escape(t('hwdiff.title'))}</h2>")
+        body.append(f'<p class="hwsum">{html.escape(line)}</p>')
     body.append('<div class="notes">' + "".join(f"<p>{html.escape(n)}</p>" for n in notes) + "</div>")
     return (f'<!doctype html><html lang="{t("lang.html")}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -844,8 +1013,8 @@ def render_html(title, env, main, warnings, summary, notes):
             + "".join(body) + "</main></body></html>\n")
 
 
-def emit(args, default_dir, title, env, main, warnings, summary, notes):
-    sys.stdout.write(render_text(title, env, main, warnings, summary, notes))
+def emit(args, default_dir, title, env, main, warnings, summary, notes, hw=None):
+    sys.stdout.write(render_text(title, env, main, warnings, summary, notes, hw))
     if args.no_files:
         return
     out = args.out or default_dir
@@ -853,7 +1022,7 @@ def emit(args, default_dir, title, env, main, warnings, summary, notes):
     for name, render in (("report.md", render_md), ("report.html", render_html)):
         path = os.path.join(out, name)
         with open(path, "w", encoding="utf-8") as f:
-            f.write(render(title, env, main, warnings, summary, notes))
+            f.write(render(title, env, main, warnings, summary, notes, hw))
         print(f"wrote {path}", file=sys.stderr)
 
 
@@ -883,10 +1052,14 @@ def cmd_compare(args):
     for run in runs:
         warnings += run_warnings(run)
     summary, tables = compare_tables(runs)
+    hw = hw_differences(runs)
+    if hw == (None, None):
+        missing = [r.label for r in runs if hw_json(r) is None]
+        warnings.insert(0, t("warn.no_hwjson", labels=", ".join(missing)))
     labels = [re.sub(r"[^\w.-]+", "_", r.label) for r in runs]
     title = t("title.compare", labels=t("title.compare.join").join(r.label for r in runs))
     emit(args, "compare-" + "-vs-".join(labels), title, env_table(runs), tables, warnings, summary,
-         [legend(), compare_note()])
+         [legend(), compare_note()], hw)
 
 
 def main():
