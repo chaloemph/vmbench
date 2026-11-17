@@ -206,7 +206,7 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 - `tests/test_lang.py`: the English and Thai message catalogs, `--lang`, `VMBENCH_LANG`, no Thai in English output
 - `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`, and that `docs/reading-results.md` and `docs/reading-results.th.md` each name every metric ID, no ID that does not exist, and the same IDs as each other
 - `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`
-- `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks
+- `tests/test_vmbench.sh`: `vmbench` subcommands (`run`, `list`, `report`, `setup`, `version`, `help`), error messages and exit codes, wrapper equivalence, running from another directory and through symlinks; `XLSX` / `XLSX_LAYOUT`: the pre-flight refusals and `review.xlsx` at the end of a QUICK run
 - `tests/test_detach.sh`: `vmbench run --detach` and `vmbench status`, with a fake `tmux` on PATH (no real tmux needed), and with the real one when it is installed
 - `tests/test_rounds.sh`: `--rounds`, `--disk-rounds` and their variables (validation, defaults, QUICK), the times of `--list`, and the mem, web and disk stages repeating with stub tools
 - `tests/test_stages.sh`: every file in `stages/` is sourced and defines the required functions; a new stage file is picked up with no other change

@@ -8,6 +8,7 @@
 #   check_cpubench      add a problem when $CB/cpubench is missing
 #   check_target        RAW_DEV safety, or 15 GB free in DATA_DIR
 #   check_stage NAME    fill PROBLEMS by running stage_<NAME>_check
+#   check_reports       fill PROBLEMS for what runs after the stages: XLSX / XLSX_LAYOUT (review.xlsx)
 #   show_stages         print the --list table (also `vmbench list`)
 
 # shellcheck source=lib/rawdev.sh
@@ -29,6 +30,19 @@ check_target() { # RAW_DEV, or free space for the test file
 check_stage() { # fills PROBLEMS with what stops this stage from running
   PROBLEMS=()
   if declare -F "stage_${1}_check" >/dev/null; then "stage_${1}_check"; fi
+}
+
+# check_reports: review.xlsx at the end of the run needs openpyxl for python3 -I, and a layout that parses
+check_reports() {
+  PROBLEMS=()
+  [ "${XLSX:-0}" = 1 ] || return 0
+  if ! need python3; then PROBLEMS+=("XLSX=1 needs python3"); return; fi
+  python3 -I -c 'import openpyxl' 2>/dev/null \
+    || PROBLEMS+=("XLSX=1 needs openpyxl for python3 -I: sudo apt-get install python3-openpyxl (pip install --user is not seen)")
+  [ -n "${XLSX_LAYOUT:-}" ] || return 0
+  if [ ! -f "$XLSX_LAYOUT" ] || [ ! -r "$XLSX_LAYOUT" ]; then PROBLEMS+=("XLSX_LAYOUT: $XLSX_LAYOUT is not a readable file"); return; fi
+  local err
+  err=$(python3 -I "$VMBENCH_HOME/xlsx.py" --check-layout "$XLSX_LAYOUT" 2>&1 >/dev/null) || PROBLEMS+=("XLSX_LAYOUT: ${err#error: }")
 }
 
 show_stages() {
