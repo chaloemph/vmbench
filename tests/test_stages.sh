@@ -81,5 +81,31 @@ out=$(HOME=$TMP/home bash "$TMP/tree/vmbench" run --only zzz 2>&1); rc=$?
 if [ "$rc" = 2 ] && [[ $out == *"not ready: zzz: zzz is a test stage"* ]]; then check "a new stage is pre-flight checked" 0
 else check "a new stage is pre-flight checked" 1 "rc=$rc ${out:0:200}"; fi
 
+# --- pipefail: vmbench runs with `set -o pipefail`, so `cmd | grep -q` fails whenever grep stops reading before cmd
+# is done (cmd gets SIGPIPE). v0.2.1 said "lmbench is not installed" now and then because of that (14 in 200 on a VM).
+mkdir -p "$TMP/pf"
+cat > "$TMP/pf/dpkg" <<'STUB'
+#!/usr/bin/env bash
+# dpkg -L lmbench: the match comes first and a long list follows, so a reader that stops early always breaks the pipe
+[ "${DPKG_STUB_NONE:-}" = 1 ] && exit 1
+echo /usr/lib/lmbench/bin/x86_64-linux-gnu/lat_mem_rd
+for i in $(seq 1 20000); do echo "/usr/share/lmbench/file$i"; done
+STUB
+chmod +x "$TMP/pf/dpkg"
+mem_problems() { # env... : the PROBLEMS of stage_mem_check, run like vmbench (pipefail), 20 times
+  env PATH="$TMP/pf:$PATH" HOME="$TMP/home" "$@" bash -c '
+    set -uo pipefail
+    VMBENCH_HOME=$1; . "$1/lib/common.sh"; . "$1/lib/preflight.sh"; . "$1/stages/mem.sh"
+    for i in $(seq 1 20); do PROBLEMS=(); stage_mem_check; printf "%s\n" "${PROBLEMS[@]}"; done' _ "$ROOT" 2>&1 | grep -c "lmbench is not installed"
+}
+n=$(mem_problems); [ "$n" = 0 ] && check "mem pre-flight finds lmbench every time under pipefail (no SIGPIPE false negative)" 0 \
+  || check "mem pre-flight finds lmbench every time under pipefail (no SIGPIPE false negative)" 1 "reported missing $n/20"
+n=$(mem_problems DPKG_STUB_NONE=1); [ "$n" = 20 ] && check "mem pre-flight still reports a missing lmbench" 0 || check "mem pre-flight still reports a missing lmbench" 1 "reported missing $n/20"
+lat=$(env PATH="$TMP/pf:$PATH" bash -c 'set -uo pipefail; . "$1/stages/mem.sh"; lmbench_lat_mem_rd' _ "$ROOT")
+[ "$lat" = /usr/lib/lmbench/bin/x86_64-linux-gnu/lat_mem_rd ] && check "lmbench_lat_mem_rd prints the first match" 0 || check "lmbench_lat_mem_rd prints the first match" 1 "got '$lat'"
+# no pipe into an early-exit grep whose status is tested, in the code vmbench runs with pipefail
+hits=$(grep -nE '\|[^|]*\bgrep +(-[a-zA-Z]*[qm]|--quiet|--max-count)' "$ROOT/vmbench" "$ROOT"/lib/*.sh "$ROOT"/stages/*.sh "$ROOT"/setup/*.sh | grep -vE ':[0-9]+:\s*#')
+[ -z "$hits" ] && check "no 'cmd | grep -q/-m' in vmbench, lib/, stages/, setup/ (pipefail)" 0 || check "no 'cmd | grep -q/-m' in vmbench, lib/, stages/, setup/ (pipefail)" 1 "$hits"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
