@@ -11,9 +11,14 @@ stage_mem_rounds() { echo "$MEM_ROUNDS"; }
 stage_mem_time() { rounds_time 1 "${MEM_ROUNDS:-3}"; }   # about 1 min per round (STREAM and lat_mem_rd)
 stage_mem_note() { echo "default"; }
 
+# lmbench_lat_mem_rd: the path of lmbench's lat_mem_rd, empty when lmbench is not installed. awk reads the whole list:
+# with `grep -q` (or -m1) the reader stops at the first match, dpkg gets SIGPIPE, and under `set -o pipefail` (vmbench)
+# the pipeline fails, so a check like `dpkg -L lmbench | grep -q ... || PROBLEMS+=` said "not installed" now and then.
+lmbench_lat_mem_rd() { dpkg -L lmbench 2>/dev/null | awk '/lat_mem_rd$/ && !p {p=$0} END{if (p) print p}'; }
+
 stage_mem_check() {
   check_tools gcc
-  dpkg -L lmbench 2>/dev/null | grep -q 'lat_mem_rd$' || PROBLEMS+=("lmbench is not installed")
+  [ -n "$(lmbench_lat_mem_rd)" ] || PROBLEMS+=("lmbench is not installed")
   if [ -n "${STREAM_C:-}" ]; then
     [ -s "$STREAM_C" ] || PROBLEMS+=("STREAM_C=$STREAM_C is not a readable file")
   elif [ ! -s "$HOME/bench-cache/stream.c" ]; then
@@ -45,7 +50,7 @@ stage_mem_run() {
   if need numactl; then
     nodes=$(numactl -H 2>/dev/null | awk '/^available:/{print $2+0}'); n0cpus=$(numactl -H 2>/dev/null | awk '/^node 0 cpus:/{print NF-3}')
   fi
-  lat=$(dpkg -L lmbench 2>/dev/null | grep -m1 'lat_mem_rd$')
+  lat=$(lmbench_lat_mem_rd)
   [ -z "$lat" ] || mb=$(awk -v m="$MEM_AVAIL_KB" -v q="$QUICK" 'BEGIN{x=int(m/1024*0.30); lim=(q==1)?64:2048; if(x>lim)x=lim; print x}')
   [ -n "$lat" ] || skip mem lat_mem_rd "lmbench not installed"
   for r in $(seq 1 "$MEM_ROUNDS"); do
