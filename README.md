@@ -168,7 +168,19 @@ A file with another hash (a changed download, a stale copy in `~/bench-cache/str
 
 `vmbench setup postgres` (or `bash setup-postgres-bench.sh`) creates a separate PostgreSQL cluster named `bench` on port 5433, a role named after your OS user, and the database `bench`. It needs `sudo` and does not touch the default cluster. The data goes to `/pgdata` and the WAL to `/pgwal` when those are mount points, otherwise to the OS disk.
 
-The cluster's settings follow the same rules on every machine, so two machines differ only in what the rules derive from their RAM and disks: `shared_buffers` 25% of RAM, `max_wal_size` 16 GB (8 GB on the OS disk; `MAX_WAL_SIZE=` overrides it), `checkpoint_timeout` 15 min, `synchronous_commit` and `fsync` on, `max_connections` 200. Everything else that can change a pgbench result is pinned to one value instead of left at a default that may differ between versions or packages: `huge_pages=off`, data checksums on, `wal_level=replica`, `wal_compression=off`, `checkpoint_completion_target=0.9`, `autovacuum=on`, `jit=off`, `track_io_timing=on`. The setup only applies them to a new cluster: to change an existing one, drop it (`sudo pg_dropcluster --stop <ver> bench`) and run the setup again.
+The cluster's settings follow the same rules on every machine, so two machines differ only in what the rules derive from their RAM, CPUs and disks. The rules are a profile:
+
+| Profile | Settings |
+|---|---|
+| `bench` (default) | the benchmark rules: `shared_buffers` 25% of RAM, `max_wal_size` 16 GB (8 GB on the OS disk; `MAX_WAL_SIZE=` overrides it), `min_wal_size` 2 GB, `checkpoint_timeout` 15 min, `max_connections` 200; the planner settings stay at their defaults |
+| `production` | a server tuned for a web workload after [PGTune](https://pgtune.leopard.in.ua/) ("Web application"): `shared_buffers` 25% and `effective_cache_size` 75% of RAM, `maintenance_work_mem` RAM/16 (at most 2 GB), `wal_buffers`, `work_mem`, `min_wal_size` / `max_wal_size` 1 GB / 4 GB, `random_page_cost` and `effective_io_concurrency` for `PG_DISK` (`ssd`, the default, or `hdd`), and with 4 or more CPUs the parallel worker counts; `max_connections` 200 |
+
+```bash
+vmbench setup postgres --profile production --print   # only show the settings for this machine
+vmbench setup postgres --profile production           # create the cluster with them (PG_PROFILE=production too)
+```
+
+`--print` needs no sudo; `PG_RAM_MB=` and `PG_CPUS=` show the settings for another machine. The formulas are in `setup/pg-profile.sh`. The profile name is stored in the cluster (`vmbench.profile`) and lands in `pg-settings.txt`, in `meta.json` (`pg_profile`) and in the environment table of the reports; `report compare` warns when two runs used different profiles. In every profile `synchronous_commit` and `fsync` are on. Everything else that can change a pgbench result is pinned to one value instead of left at a default that may differ between versions or packages: `huge_pages=off`, data checksums on, `wal_level=replica`, `wal_compression=off`, `checkpoint_completion_target=0.9`, `autovacuum=on`, `jit=off`, `track_io_timing=on`. Two settings differ from PGTune on purpose in `production` too: `huge_pages` stays off (PGTune says `try` from 32 GB, which silently falls back) and `jit` stays off. The setup only applies the settings to a new cluster, and says so when an existing cluster has another profile: to change it, drop it (`sudo pg_dropcluster --stop <ver> bench`) and run the setup again.
 
 The stage loads the data once (scale factor from `PG_SCALE`, by default 1.5 × RAM so that the working set is larger than memory, capped by free space in the data directory) and then runs `PG_ROUNDS` rounds of: `CHECKPOINT`, a 1 min warm-up, the 10 min TPC-B run with 2 × vCPU clients, another `CHECKPOINT` and the 5 min single-client run. The checkpoint makes every measured run start from a clean state; without it the checkpoint forced by the data load lands somewhere inside the run and the stability value depends on where. The role needs `pg_checkpoint` for that (PostgreSQL 15+, granted by the setup; the pre-flight check refuses the stage otherwise). The result folder gets `pg-settings.txt` (version and every setting that matters, for a diff between two machines) and `pg-checkpoints.txt` (how many checkpoints happened inside each measured run; more than zero explains a low stability value). Compare `pg.*` values only between runs with the same `PG_SCALE` and the same `pg-settings.txt`, and read the kernel section of `info.txt` (transparent hugepages, dirty-page writeback, I/O scheduler, mount options) when the two differ.
 
@@ -283,6 +295,7 @@ The result folder contains `info.txt`, which lists the host name, IP addresses, 
 | `docs/releasing.md` | how to cut, verify and withdraw a release |
 | `setup/cpubench.sh` | downloads a cpubench release (`VERSION=latest` by default, or a tag such as `VERSION=v0.1.0`) |
 | `setup/postgres.sh` | creates the PostgreSQL cluster, role and database for the `pg` stage |
+| `setup/pg-profile.sh` | the settings of the `bench` and `production` profiles of `setup postgres` |
 | `setup-cpubench.sh`, `setup-postgres-bench.sh` | wrappers for the two setup scripts at their old paths |
 
 ## Development

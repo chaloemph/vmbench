@@ -217,6 +217,7 @@ How to read the pg group:
 - TPS is limited by whichever resource runs out first: often commit latency (compare with the WAL values in the disk group), sometimes CPU.
 - Stability matters as much as TPS. A machine with slightly lower TPS but higher stability gives a more predictable service.
 - These results depend on the data size (`PG_SCALE`) and on PostgreSQL settings. Only compare runs with the same scale and the same settings (`pg-settings.txt` in the result folder lists them, including the version and the data checksums, so two files can be diffed).
+- The first line of the settings is the setup profile (`vmbench.profile`, also *PostgreSQL profile* in the environment table). `bench` uses the same benchmark rules on every machine; `production` tunes each machine for its own RAM and CPUs after PGTune, so a comparison of two `production` runs compares two tuned servers. `report compare` warns when the profiles differ; `unset` means a cluster set up before vmbench 0.2.1 (it has the `bench` rules unless someone changed it).
 - A low stability value with checkpoints counted in `pg-checkpoints.txt` means the run included a checkpoint: compare the `disk.wal.*` and `disk.fio.db-*` values, the checkpoint is where the storage shows.
 
 ## net

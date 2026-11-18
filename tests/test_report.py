@@ -279,6 +279,40 @@ class Warnings(unittest.TestCase):
         b.info["cpubench"] = a.info["cpubench"].replace("GOAMD64=v1", "GOARM64=v8.0")
         self.assertNotIn("versions differ", "\n".join(report.compare_warnings([a, b])))
 
+    @staticmethod
+    def with_pg(name, profile):
+        """A fixture with one pg metric and meta.json pg_profile = profile (None: the key is missing)."""
+        r = fixture(name)
+        r.metrics.append(metric("pgbench tpcb-like tps (-c 16)", [1000.0], "TPS", "pg.pgbench.tpcb.tps"))
+        if profile is not None:
+            r.meta["pg_profile"] = profile
+        return r
+
+    def test_different_pg_profiles_are_flagged(self):
+        text = "\n".join(report.compare_warnings([self.with_pg("vm-a", "bench"), self.with_pg("vm-b", "production")]))
+        self.assertIn("different profiles", text)
+        self.assertIn("vm-a=bench", text)
+        self.assertIn("vm-b=production", text)
+
+    def test_same_pg_profile_is_not_flagged(self):
+        runs = [self.with_pg("vm-a", "production"), self.with_pg("vm-b", "production")]
+        self.assertNotIn("different profiles", "\n".join(report.compare_warnings(runs)))
+
+    def test_pg_profile_of_an_older_run_counts_as_unset(self):
+        text = "\n".join(report.compare_warnings([self.with_pg("vm-a", None), self.with_pg("vm-b", "production")]))
+        self.assertIn("vm-a=unset", text)
+
+    def test_pg_profile_is_ignored_without_pg_results(self):
+        a, b = fixture("vm-a"), self.with_pg("vm-b", "production")
+        a.meta["pg_profile"] = "bench"   # no pg metric: the value is not about this comparison
+        self.assertEqual(a.pg_profile, "")
+        self.assertNotIn("different profiles", "\n".join(report.compare_warnings([a, b])))
+
+    def test_environment_table_shows_pg_profile(self):
+        table = report.env_table([self.with_pg("vm-a", "production"), self.with_pg("vm-b", None), fixture("vm-c")])
+        row = next(r for r in table.rows if r[0] == "PostgreSQL profile")
+        self.assertEqual(row[1:], ["production", "unset (set up before 0.2.1)", "-"])
+
     def test_environment_table_counts_problems_with_reasons(self):
         table = report.env_table([fixture("vm-c")])
         status = next(r for r in table.rows if r[0] == "Stage status")
