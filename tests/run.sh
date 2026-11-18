@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs every test: the Python tests for report.py (tables, metric ids, languages) hw.py (hardware.json) and xlsx.py (the Excel review sheet), and the command line tests for
-# run-benchmark.sh, the vmbench entry script, the stage files, the pinned STREAM source, the get.sh installer, the release tarball build, the rounds options, --detach / status, and vmbench notify.
+# run-benchmark.sh, the vmbench entry script, the stage files, the pinned STREAM source, the get.sh installer, the release tarball build, the rounds options, --detach / status, the setup postgres profiles, and vmbench notify.
 #   bash tests/run.sh
 set -u
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -28,6 +28,9 @@ bash tests/test_stream.sh || status=1
 echo
 echo "== bare metal (nvme, sustain, burnin counters, hardware.txt, hardware.json)"
 bash tests/test_hw.sh || status=1
+echo
+echo "== setup postgres profiles (stub sudo and pg_createcluster)"
+bash tests/test_pgsetup.sh || status=1
 echo
 echo "== notify (Telegram, stub curl)"
 bash tests/test_notify.sh || status=1

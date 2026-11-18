@@ -184,6 +184,8 @@ MESSAGES = {
         "env.stage_status": "Stage status",
         "env.steal": "avg {avg}% / max {peak}%",
         "env.no_problems": "no FAIL/SKIP",
+        "env.pg_profile": "PostgreSQL profile",
+        "env.pg_profile.unset": "unset (set up before 0.2.1)",
         "col.test": "Test",
         "col.unit": "Unit",
         "col.value": "Value",
@@ -216,6 +218,8 @@ MESSAGES = {
         "cmp.fio_size": "fio file size",
         "warn.cpubench": "cpubench versions differ, so the cpubench results cannot be compared directly: {values}",
         "warn.vmbench": "vmbench versions differ: {values}",
+        "warn.pg_profile": "PostgreSQL was set up with different profiles, so the pg results compare differently tuned "
+                           "servers, not only the machines: {values}",
         "warn.arch": "different architectures: sysbench cpu counts prime numbers and depends heavily on the compiler, "
                      "so do not judge CPU speed by it alone",
         "hwdiff.title": "Hardware differences",
@@ -244,6 +248,8 @@ MESSAGES = {
         "env.stage_status": "สถานะขั้นตอน",
         "env.steal": "เฉลี่ย {avg}% / สูงสุด {peak}%",
         "env.no_problems": "ไม่มี FAIL/SKIP",
+        "env.pg_profile": "profile ของ PostgreSQL",
+        "env.pg_profile.unset": "ไม่ระบุ (ตั้งค่าก่อนรุ่น 0.2.1)",
         "col.test": "ทดสอบ",
         "col.unit": "หน่วย",
         "col.value": "ค่า",
@@ -276,6 +282,8 @@ MESSAGES = {
         "cmp.fio_size": "ขนาดไฟล์ fio",
         "warn.cpubench": "cpubench คนละเวอร์ชัน ผลกลุ่ม cpubench เทียบกันไม่ได้ตรง ๆ: {values}",
         "warn.vmbench": "vmbench คนละเวอร์ชัน: {values}",
+        "warn.pg_profile": "PostgreSQL ตั้งค่าด้วยคนละ profile ผล pg จึงเป็นการเทียบเซิร์ฟเวอร์ที่ tune ต่างกัน "
+                           "ไม่ใช่แค่ต่างเครื่อง: {values}",
         "warn.arch": "คนละสถาปัตยกรรม: sysbench cpu คำนวณจำนวนเฉพาะ ผลขึ้นกับ compiler มาก "
                      "อย่าใช้ตัวเดียวสรุปความแรงของ CPU",
         "hwdiff.title": "ฮาร์ดแวร์ที่ต่างกัน",
@@ -394,6 +402,15 @@ class Run:
     def version(self):
         v = self.meta.get("vmbench_version")
         return v if isinstance(v, str) and v else ""
+
+    @property
+    def pg_profile(self):
+        """The setup profile of the PostgreSQL cluster (meta.json pg_profile, vmbench 0.2.1+); "" when pg did not run,
+        "unset" when it ran on a cluster without vmbench.profile (or by an older vmbench)."""
+        if not any(m.id.startswith("pg.") for m in self.metrics):
+            return ""
+        v = self.meta.get("pg_profile")
+        return v if isinstance(v, str) and v else "unset"
 
     @property
     def stages(self):
@@ -528,6 +545,10 @@ def env_table(runs):
         avg, top = r.steal
         return "-" if avg is None else t("env.steal", avg=num(avg), peak=num(top))
 
+    def pg_profile(r):
+        p = r.pg_profile
+        return t("env.pg_profile.unset") if p == "unset" else (p or "-")
+
     def status(r):
         c = collections.Counter(p[2].split(" ", 1)[0] for p in r.problems)
         return ", ".join(f"{k} {v}" for k, v in sorted(c.items())) or t("env.no_problems")
@@ -545,6 +566,7 @@ def env_table(runs):
               (t("env.rounds"), lambda r: f"{r.info.get('rounds', '-')} / {r.info.get('quick', '-')}"),
               (t("env.fio"), lambda r: f"{r.info.get('fio_size', '-')} / {r.info.get('raw_dev', '-')}"),
               ("STREAM N", lambda r: r.stream_n or "-"),
+              (t("env.pg_profile"), pg_profile),
               ("CPU steal", steal),
               (t("env.stage_status"), status)]
     return Table(t("env.title"), [t("env.item")] + [r.label for r in runs], ["l"] * (len(runs) + 1),
@@ -590,6 +612,9 @@ def compare_warnings(runs):
     known = [r.version for r in runs]
     if all(known) and len(set(known)) > 1:
         out.append(t("warn.vmbench", values=", ".join(f"{r.label}={r.version}" for r in runs)))
+    profiles = [r.pg_profile for r in runs if r.pg_profile]
+    if len(set(profiles)) > 1:
+        out.append(t("warn.pg_profile", values=", ".join(f"{r.label}={r.pg_profile}" for r in runs if r.pg_profile)))
     differs(t("cmp.rounds"), lambda r: r.info.get("rounds", "?"))
     differs(t("cmp.fio_size"), lambda r: r.info.get("fio_size", "?"))
     differs("raw device", lambda r: r.info.get("raw_dev", "?"))

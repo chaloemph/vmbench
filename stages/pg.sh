@@ -8,7 +8,8 @@
 # Metric ids: pg.* (the table is in lib/metrics.sh)
 # With a BMC (ipmitool dcmi power reading as root), the system power is sampled during the TPC-B run and
 # pg.pgbench.tpcb.tps-per-watt is TPS / average W; the samples are in pg-power-tpcb.log (-rN for later rounds).
-# Files in the result folder: pg-settings.txt (server and pgbench version, every non-default setting and the ones that
+# The setup profile of the cluster (vmbench.profile, see setup/pg-profile.sh) goes to pg-settings.txt and to meta.json
+# (pg_profile). Files in the result folder: pg-settings.txt (server and pgbench version, every non-default setting and the ones that
 # matter for the result), pg-checkpoints.txt (checkpoints that happened during each measured run), pgbench-*.log (raw output; round 1
 # keeps the plain names, later rounds add -rN).
 
@@ -34,6 +35,7 @@ pg_rep_name() { if [ "$ROUND" = 1 ]; then echo "$1"; else echo "${1%.log}-r$ROUN
 pg_settings_dump() {
   echo "pgbench client = $(pgbench --version 2>&1)" > "$1"
   psql -X -At -c "select 'version = '||version()" \
+    -c "select 'vmbench.profile = '||coalesce(current_setting('vmbench.profile', true), 'unset (cluster set up before vmbench 0.2.1)')" \
     -c "select 'huge_pages_status = '||coalesce(current_setting('huge_pages_status', true), 'n/a (PostgreSQL < 17)')" \
     -c "select name||' = '||setting||coalesce(' '||unit, '')||'   ['||source||']' from pg_settings
         where source <> 'default' or name in ('autovacuum','checkpoint_completion_target','checkpoint_timeout','data_checksums',
@@ -71,6 +73,9 @@ stage_pg_run() {
   if ! psql -X -Atc 'select 1' > /dev/null 2>&1; then
     skip pg database "cannot connect to db $PGDATABASE on port $PGPORT, run setup-postgres-bench.sh first"; return; fi
   pg_settings_dump "$OUT/pg-settings.txt"
+  # the setup profile (vmbench setup postgres --profile): into meta.json, so report compare can warn about a mix
+  PG_PROFILE_USED=$(psql -X -Atc "select coalesce(current_setting('vmbench.profile', true), '')" 2>/dev/null)
+  log "pg setup profile: ${PG_PROFILE_USED:-unset (cluster set up before vmbench 0.2.1)}"
   local ddir free scale c j r f tps lat
   ddir=$(psql -X -Atc "show data_directory" 2>/dev/null); ddir=${ddir:-/}
   free=$(df -BG --output=avail "$ddir" 2>/dev/null | tail -1 | tr -dc 0-9); free=${free:-0}

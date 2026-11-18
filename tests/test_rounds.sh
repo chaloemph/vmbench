@@ -72,11 +72,13 @@ meta_rounds() { # env... : prints "<rounds> <rounds_by_stage>" of an info-only r
     load_stages; for f in "$VMBENCH_HOME"/stages/*.sh; do :; done
     OUT=$2; mkdir -p "$OUT"; CB=/nonexistent LABEL=l STAGES=" info cpu mem disk web "; QUICK=${QUICK:-0}; START_UTC=2000-01-01T00:00:00Z; NPROC=2; RAM_GB=4
     ROUNDS=${ROUNDS:-3}; MEM_ROUNDS=${MEM_ROUNDS:-3}; WEB_ROUNDS=${WEB_ROUNDS:-3}; DISK_ROUNDS=${DISK_ROUNDS:-1}
-    write_meta; python3 -I -c "import json,sys; m=json.load(open(sys.argv[1])); print(m[\"rounds\"], m[\"rounds_by_stage\"])" "$OUT/meta.json"
+    write_meta; python3 -I -c "import json,sys; m=json.load(open(sys.argv[1])); print(m[\"rounds\"], m[\"rounds_by_stage\"]${META_KEY:+, m[\"$META_KEY\"]})" "$OUT/meta.json"
   ' _ "$ROOT" "$TMP/meta$$"
 }
 r=$(meta_rounds ROUNDS=3 WEB_ROUNDS=2 DISK_ROUNDS=4)
 [ "$r" = "3 {'cpu': 3, 'mem': 3, 'disk': 4, 'web': 2}" ] && check "meta.json records the rounds of every stage" 0 || check "meta.json records the rounds of every stage" 1 "got: $r"
+r=$(meta_rounds META_KEY=pg_profile PG_PROFILE_USED=production); [ "${r##* }" = production ] && check "meta.json records the pg setup profile" 0 || check "meta.json records the pg setup profile" 1 "got: $r"
+r=$(meta_rounds META_KEY=pg_profile); [ "${r##* }" = None ] && check "meta.json pg_profile is null without the pg stage" 0 || check "meta.json pg_profile is null without the pg stage" 1 "got: $r"
 
 # the real option parser: print what cmd_run decided, by stopping at --list (stub show_stages)
 decide() { # args... : "<ROUNDS> <MEM> <WEB> <DISK>" after parsing, with the environment given by the caller
@@ -185,6 +187,8 @@ while [ $# -gt 0 ]; do
     -c|-Atc) q=$2; shift
       case $q in
         *data_directory*) echo /tmp ;;
+        *"'vmbench.profile = '"*) echo "vmbench.profile = ${PG_STUB_PROFILE:-unset (cluster set up before vmbench 0.2.1)}" ;;
+        *"current_setting('vmbench.profile', true), '')"*) echo "${PG_STUB_PROFILE:-}" ;;
         *pg_stat_checkpointer*) echo "$(cat "$PGBENCH_CKPT") 0" ;;
         *version\(\)*) echo "version = PostgreSQL 16 stub" ;;
         *pg_settings*) echo "shared_buffers = 1024 8kB   [configuration file]" ;;
@@ -205,7 +209,7 @@ echo "tps = 1000.5 (without initial connection time)"
 STUB
   chmod +x "$TMP/stubs/psql" "$TMP/stubs/pgbench"
   rm -rf "$TMP/st-pg"; mkdir -p "$TMP/st-pg"; echo 0 > "$TMP/ckpt"
-  res=$(stage_run pg PG_ROUNDS=2 PGBENCH_CKPT="$TMP/ckpt")
+  res=$(stage_run pg PG_ROUNDS=2 PGBENCH_CKPT="$TMP/ckpt" PG_STUB_PROFILE=production)
   ok=0
   for id in 'pg\.pgbench\.tpcb\.tps' 'pg\.pgbench\.tpcb\.stability' 'pg\.pgbench\.latency\.single'; do
     [ "$(count "^$id\t.*\t1$" "$res")" = 1 ] && [ "$(count "^$id\t.*\t2$" "$res")" = 1 ] || { ok=1; echo "   $id: $(count "^$id\t" "$res") rows"; }
@@ -219,6 +223,8 @@ STUB
   [ "$(count '^round [12] (tpcb|single): timed=1 requested=0' "$ck")" = 4 ] && check "pg: pg-checkpoints.txt counts the checkpoints inside each measured run" 0 || check "pg: pg-checkpoints.txt counts the checkpoints inside each measured run" 1 "$ck"
   grep -q '^version = ' "$TMP/st-pg/pg-settings.txt" && grep -q '^shared_buffers = ' "$TMP/st-pg/pg-settings.txt" \
     && check "pg: pg-settings.txt has the version and the settings" 0 || check "pg: pg-settings.txt has the version and the settings" 1 "$(cat "$TMP/st-pg/pg-settings.txt")"
+  grep -q '^vmbench.profile = production$' "$TMP/st-pg/pg-settings.txt" && grep -q 'pg setup profile: production' "$TMP/st-pg/stage.out" \
+    && check "pg: the setup profile is in pg-settings.txt and the log" 0 || check "pg: the setup profile is in pg-settings.txt and the log" 1 "$(cat "$TMP/st-pg/pg-settings.txt")" "$(grep profile "$TMP/st-pg/stage.out")"
   # a refused CHECKPOINT (no pg_checkpoint grant) is a warning, the measurement still runs
   rm -rf "$TMP/st-pg"; mkdir -p "$TMP/st-pg"; echo 0 > "$TMP/ckpt"
   res=$(stage_run pg PG_ROUNDS=1 PGBENCH_CKPT="$TMP/ckpt" PSQL_CHECKPOINT_RC=1)

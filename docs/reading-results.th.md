@@ -223,6 +223,7 @@ Application		Node JS transactions	Team D	Nice to have
 - TPS ถูกจำกัดด้วยทรัพยากรที่หมดก่อน มักเป็น latency ของการ commit (เทียบกับค่า WAL ในกลุ่ม disk) บางครั้งเป็น CPU
 - ความนิ่งสำคัญพอ ๆ กับ TPS เครื่องที่ TPS ต่ำกว่าเล็กน้อยแต่นิ่งกว่า ให้บริการที่คาดเดาได้มากกว่า
 - ผลขึ้นกับขนาดข้อมูล (`PG_SCALE`) และการตั้งค่า PostgreSQL เทียบเฉพาะการรันที่ scale และการตั้งค่าเหมือนกัน (`pg-settings.txt` ในโฟลเดอร์ผลบันทึกค่าเหล่านี้ รวมถึงเวอร์ชันและ data checksums จึงนำสองไฟล์มา diff กันได้)
+- บรรทัดแรกของการตั้งค่าคือ profile ที่ใช้ตอน setup (`vmbench.profile` แสดงเป็น *profile ของ PostgreSQL* ในตารางสภาพแวดล้อมด้วย) `bench` ใช้กติกาเบนช์มาร์กเดียวกันทุกเครื่อง ส่วน `production` tune แต่ละเครื่องตาม RAM และ CPU ของตัวเองตามสูตรของ PGTune การเทียบสองการรันที่เป็น `production` จึงเป็นการเทียบเซิร์ฟเวอร์ที่ tune แล้วทั้งคู่ `report compare` จะเตือนเมื่อ profile ต่างกัน ค่า `unset` คือ cluster ที่ตั้งก่อน vmbench 0.2.1 (ใช้กติกา `bench` เว้นแต่มีคนแก้เอง)
 - ถ้าค่า stability ต่ำและ `pg-checkpoints.txt` นับ checkpoint ได้ แปลว่าช่วงวัดมี checkpoint แทรก ให้ดูค่า `disk.wal.*` และ `disk.fio.db-*` ประกอบ เพราะ checkpoint คือจุดที่ storage แสดงตัว
 
 ## net
