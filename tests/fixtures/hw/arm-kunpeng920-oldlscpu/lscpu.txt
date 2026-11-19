@@ -1,0 +1,20 @@
+Architecture:                    aarch64
+CPU op-mode(s):                  64-bit
+Byte Order:                      Little Endian
+CPU(s):                          16
+On-line CPU(s) list:             0-15
+Vendor ID:                       HiSilicon
+Model name:                      -
+Model:                           0
+Thread(s) per core:              1
+Core(s) per socket:              16
+Socket(s):                       1
+Stepping:                        0x1
+BogoMIPS:                        200.00
+NUMA node(s):                    1
+L1d cache:                       1 MiB
+L1i cache:                       1 MiB
+L2 cache:                        8 MiB
+L3 cache:                        32 MiB
+NUMA node0 CPU(s):               0-15
+Flags:                           fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma dcpop asimddp asimdfhm

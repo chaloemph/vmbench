@@ -8,7 +8,10 @@ null (or [] / {}). Nothing here raises on odd input: a part that cannot be parse
 "unavailable". No serial numbers, asset tags, UUIDs, host names, IP or MAC addresses are read or written.
 
 Schema 1 (see docs/reading-results.md, "Bare metal"):
-  cpu      vendor, model, family, model_id, stepping (strings: ARM steppings look like r3p1), microcode, sockets,
+  cpu      vendor, model, family, model_id, stepping (strings: ARM steppings look like r3p1; on ARM with cpu-id.txt
+           family is the MIDR implementer "0x48", model_id the part "0xd01", and a model lscpu does not name comes
+           from the part: "Kunpeng-920 (TSV110)", else "HiSilicon part 0xd0f"; without cpu-id.txt it is
+           "HiSilicon (model not reported, SVE2)", never "-"), microcode, sockets,
            cores_per_socket, threads_per_core, numa_nodes (int), mhz_min, mhz_max (float), cache {l1d l1i l2 l3}
   freq     driver, governor, min_khz, max_khz, scaling_min_khz, scaling_max_khz, turbo ("on"/"off"), smt,
            cpuidle_driver, cpuidle_governor
@@ -129,6 +132,46 @@ def sections(text):
 
 # ---------------------------------------------------------------- one parser per part
 
+# ARM CPUs say what they are only through the MIDR register (implementer, variant, part, revision); /proc/cpuinfo on
+# arm64 has no "model name", and lscpu names only the parts in its own table (older util-linux prints "Model name: -"
+# for a HiSilicon Kunpeng 920, for example). These tables name the parts whose numbers are certain (Linux
+# arch/arm64/include/asm/cputype.h, util-linux lscpu-arm.c); the names of Arm's own cores are spelled as lscpu spells
+# them, so a VM whose lscpu knows the part and one whose lscpu does not end up with the same cpu.model.
+# AWS Graviton2/3/4 are Arm Neoverse N1/V1/V2 cores and Ampere Altra is Neoverse N1: they come out of the Arm table.
+ARM_IMPLEMENTERS = {
+    0x41: "ARM", 0x42: "Broadcom", 0x43: "Cavium", 0x46: "Fujitsu", 0x48: "HiSilicon", 0x4e: "NVIDIA",
+    0x50: "APM", 0x51: "Qualcomm", 0x61: "Apple", 0xc0: "Ampere",
+}
+ARM_PARTS = {
+    (0x41, 0xd03): "Cortex-A53", (0x41, 0xd07): "Cortex-A57", (0x41, 0xd08): "Cortex-A72",
+    (0x41, 0xd0b): "Cortex-A76", (0x41, 0xd0c): "Neoverse-N1", (0x41, 0xd40): "Neoverse-V1",
+    (0x41, 0xd49): "Neoverse-N2", (0x41, 0xd4f): "Neoverse-V2",
+    (0x48, 0xd01): "Kunpeng-920 (TSV110)",
+    (0xc0, 0xac3): "Ampere-1", (0xc0, 0xac4): "Ampere-1a",
+}
+
+
+def hexnum(v):
+    """'0x48' / '72' / '0x00000000481fd010' -> int, None when it is not a number."""
+    try:
+        return int(str(v).strip(), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def arm_id(text):
+    """cpu-id.txt (CPU implementer/variant/part/revision of cpu0 from /proc/cpuinfo, and midr_el1 from /sys) ->
+    (implementer, variant, part, revision) as ints, or None when the file has no ARM id (x86, old result folder)."""
+    t = kv(text, "=")
+    f = [hexnum(t.get(k)) for k in ("implementer", "variant", "part", "revision")]
+    if f[0] is None or f[2] is None:
+        midr = hexnum(t.get("midr_el1"))
+        if not midr:
+            return None
+        f = [(midr >> 24) & 0xff, (midr >> 20) & 0xf, (midr >> 4) & 0xfff, midr & 0xf]
+    return tuple(f)
+
+
 def parse_cpu(d, hw):
     c = hw["cpu"]
     t = kv(read(d, "lscpu.txt"), ":")
@@ -137,6 +180,27 @@ def parse_cpu(d, hw):
     c["family"] = clean(t.get("CPU family"))
     c["model_id"] = clean(t.get("Model"))
     c["stepping"] = clean(t.get("Stepping"))
+    dash = c["model"] == "-"
+    if dash:
+        c["model"] = None
+    mid = arm_id(read(d, "cpu-id.txt"))
+    if mid and not c["family"]:   # "CPU family" is always there on x86: its fields stay as lscpu prints them
+        impl, variant, part, rev = mid
+        c["vendor"] = c["vendor"] if c["vendor"] not in (None, "-") else ARM_IMPLEMENTERS.get(impl)
+        if not c["model"]:
+            c["model"] = ARM_PARTS.get((impl, part)) or "%s part 0x%03x" % (
+                ARM_IMPLEMENTERS.get(impl) or c["vendor"] or "implementer 0x%02x" % impl, part)
+        # the MIDR fields in the places x86 has them: family = implementer, model_id = part, stepping = rVpR
+        c["family"] = "0x%02x" % impl
+        c["model_id"] = "0x%03x" % part
+        if variant is not None and rev is not None:
+            c["stepping"] = "r%dp%d" % (variant, rev)
+    elif not c["model"] and (dash or (clean(t.get("Architecture")) or "").startswith(("aarch64", "arm"))):
+        # ARM without the MIDR (result folders of vmbench 0.2.3 and older): say so instead of "-", with the widest
+        # vector extension from the flags, which at least tells a core with SVE2 from one without
+        flags = (t.get("Flags") or "").split()
+        ext = ", SVE2" if "sve2" in flags else ", SVE" if "sve" in flags else ""
+        c["model"] = "%s (model not reported%s)" % (c["vendor"] if c["vendor"] not in (None, "-") else "ARM", ext)
     c["sockets"] = to_int(t.get("Socket(s)"))
     # ARM lscpu often says "Core(s) per cluster" and "Cluster(s)" instead of sockets
     c["cores_per_socket"] = to_int(t.get("Core(s) per socket") or t.get("Core(s) per cluster"))

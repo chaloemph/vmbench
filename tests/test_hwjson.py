@@ -47,7 +47,7 @@ class Fixtures(unittest.TestCase):
 
     def test_every_key_of_the_schema_is_always_there(self):
         want = keys(hw.skeleton())
-        for name in ("x86-baremetal", "arm-vm", "x86-vm"):
+        for name in ("x86-baremetal", "arm-vm", "x86-vm", "arm-hisilicon-vm", "arm-kunpeng920-oldlscpu", "arm-n1-oldlscpu", "arm-unknown-part"):
             with self.subTest(name):
                 self.assertEqual(keys(hw.build(os.path.join(FIX, name))), want)
 
@@ -88,6 +88,74 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(v["disks"][1]["model"], 'Virtual Disk "B"')        # lsblk -P hex escapes decoded
 
 
+class ArmCpuModel(unittest.TestCase):
+    """ARM: the model comes from the MIDR (hw/cpu-id.txt) when lscpu does not name the CPU."""
+
+    def cpu(self, name):
+        return hw.build(os.path.join(FIX, name))["cpu"]
+
+    def test_real_hisilicon_vm_without_midr(self):
+        # lscpu.txt of a vmbench 0.2.3 run on a HiSilicon KVM guest (Ubuntu 24.04): "Model name: -", and lscpu of
+        # util-linux 2.39 knows 0xd01, so this is a newer part (it has SVE2, the Kunpeng 920 has no SVE). No
+        # cpu-id.txt: the part number is unknown, and the model says so instead of "-"
+        c = self.cpu("arm-hisilicon-vm")
+        self.assertEqual((c["vendor"], c["model"]), ("HiSilicon", "HiSilicon (model not reported, SVE2)"))
+        self.assertEqual((c["family"], c["model_id"], c["stepping"]), (None, "0", "0x0"))   # as lscpu prints them
+        self.assertEqual((c["sockets"], c["cores_per_socket"]), (1, 16))
+
+    def test_hisilicon_d01_with_model_name_dash(self):
+        # synthetic: util-linux older than 2.35 has no HiSilicon table and prints "-" for a Kunpeng 920 too
+        c = self.cpu("arm-kunpeng920-oldlscpu")
+        self.assertEqual((c["vendor"], c["model"]), ("HiSilicon", "Kunpeng-920 (TSV110)"))
+        self.assertEqual((c["family"], c["model_id"], c["stepping"]), ("0x48", "0xd01", "r1p0"))
+        self.assertEqual((c["sockets"], c["cores_per_socket"]), (1, 16))   # the rest of lscpu is still read
+
+    def test_neoverse_n1_from_midr_el1_alone(self):
+        # old lscpu without a "Model name" line, /proc/cpuinfo fields missing: midr_el1 0x413fd0c1
+        c = self.cpu("arm-n1-oldlscpu")
+        self.assertEqual((c["vendor"], c["model"]), ("ARM", "Neoverse-N1"))
+        self.assertEqual((c["family"], c["model_id"], c["stepping"]), ("0x41", "0xd0c", "r3p1"))
+
+    def test_unknown_part_names_vendor_and_part(self):
+        c = self.cpu("arm-unknown-part")
+        self.assertEqual(c["model"], "HiSilicon part 0xd0f")
+        self.assertEqual((c["family"], c["model_id"], c["stepping"]), ("0x48", "0xd0f", "r2p2"))
+
+    def test_lscpu_name_wins_and_x86_is_untouched(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "lscpu.txt"), "w", encoding="utf-8") as f:
+                f.write("Vendor ID: ARM\nModel name: Neoverse-V2\nModel: 1\nStepping: r0p1\n")
+            with open(os.path.join(d, "cpu-id.txt"), "w", encoding="utf-8") as f:
+                f.write("implementer=0x41\nvariant=0x0\npart=0xd4f\nrevision=1\nmidr_el1=\n")
+            c = hw.build(d)["cpu"]
+            self.assertEqual((c["model"], c["model_id"], c["stepping"]), ("Neoverse-V2", "0xd4f", "r0p1"))
+            # x86 with an (impossible) ARM id: "CPU family" is there, so nothing is replaced
+            with open(os.path.join(d, "lscpu.txt"), "w", encoding="utf-8") as f:
+                f.write("Vendor ID: GenuineIntel\nModel name: Xeon\nCPU family: 6\nModel: 143\nStepping: 8\n")
+            c = hw.build(d)["cpu"]
+            self.assertEqual((c["vendor"], c["model"], c["family"], c["model_id"], c["stepping"]),
+                             ("GenuineIntel", "Xeon", "6", "143", "8"))
+
+    def test_table_and_fallbacks(self):
+        for impl, part, want in ((0x41, 0xd08, "Cortex-A72"), (0x41, 0xd0b, "Cortex-A76"), (0x41, 0xd40, "Neoverse-V1"),
+                                 (0x41, 0xd49, "Neoverse-N2"), (0x41, 0xd4f, "Neoverse-V2"), (0xc0, 0xac3, "Ampere-1"),
+                                 (0xc0, 0xac4, "Ampere-1a"), (0x41, 0xfff, "ARM part 0xfff"),
+                                 (0x99, 0x123, "implementer 0x99 part 0x123")):
+            with self.subTest(want), tempfile.TemporaryDirectory() as d:
+                with open(os.path.join(d, "cpu-id.txt"), "w", encoding="utf-8") as f:
+                    f.write("midr_el1=0x%08x\n" % (impl << 24 | 0xf << 16 | part << 4))
+                self.assertEqual(hw.build(d)["cpu"]["model"], want)
+
+    def test_no_model_and_no_id(self):
+        for text, want in (("Vendor ID: HiSilicon\nModel name: -\n", "HiSilicon (model not reported)"),
+                           ("Architecture: aarch64\nFlags: fp asimd sve\n", "ARM (model not reported, SVE)"),
+                           ("Architecture: x86_64\nVendor ID: Stub\n", None)):
+            with self.subTest(want), tempfile.TemporaryDirectory() as d:
+                with open(os.path.join(d, "lscpu.txt"), "w", encoding="utf-8") as f:
+                    f.write(text)
+                self.assertEqual(hw.build(d)["cpu"]["model"], want)
+
+
 class Robustness(unittest.TestCase):
     def test_empty_folder_gives_the_skeleton(self):
         with tempfile.TemporaryDirectory() as d:
@@ -98,7 +166,7 @@ class Robustness(unittest.TestCase):
 
     def test_garbage_never_raises(self):
         junk = "\x00\xff:::=|||--- \n" * 50 + "Memory Device\n\tSize: lots\n\tLocator:\n"
-        names = ("lscpu.txt", "cpuinfo-microcode.txt", "cpufreq.txt", "dmi-id.txt", "dmidecode-bios.txt",
+        names = ("lscpu.txt", "cpuinfo-microcode.txt", "cpu-id.txt", "cpufreq.txt", "dmi-id.txt", "dmidecode-bios.txt",
                  "dmidecode-memory.txt", "edac-dimms.txt", "ipmitool-mc-info.txt", "net-x.txt", "lsblk.txt",
                  "nvme-nvme0.txt", "ipmi-sdr-temp.txt", "ipmi-sdr-fan.txt", "ipmi-dcmi-power.txt", "unavailable.txt")
         with tempfile.TemporaryDirectory() as d:
@@ -128,7 +196,7 @@ class Robustness(unittest.TestCase):
         self.assertEqual(run_hw("/nonexistent/hw").returncode, 2)
 
     def test_no_serial_numbers_in_the_fixtures_or_the_output(self):
-        for name in ("x86-baremetal", "arm-vm", "x86-vm"):
+        for name in ("x86-baremetal", "arm-vm", "x86-vm", "arm-hisilicon-vm", "arm-kunpeng920-oldlscpu", "arm-n1-oldlscpu", "arm-unknown-part"):
             text = json.dumps(hw.build(os.path.join(FIX, name))).lower()
             self.assertNotIn("serial", text)
             self.assertNotIn("uuid", text)

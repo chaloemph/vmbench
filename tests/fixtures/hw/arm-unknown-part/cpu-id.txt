@@ -1,0 +1,5 @@
+implementer=0x48
+variant=0x2
+part=0xd0f
+revision=2
+midr_el1=
