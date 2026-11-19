@@ -128,7 +128,7 @@ vmbench status [DIR]
 
 Before anything runs, every selected stage is checked (missing tools, missing cpubench, free space, database connection, peer reachability, raw-device safety). If something is missing, vmbench prints all of it and exits with code 2 without running anything.
 
-Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)), `XLSX=1` (also write `review.xlsx` at the end, see [Reports](#reports)), `XLSX_LAYOUT=FILE` (the `layout.tsv` for it; implies `XLSX=1`), `NOTIFY=1` (send a summary and the reports to Telegram at the end, see [Telegram](#telegram)). `vmbench run --help` lists them all.
+Settings are environment variables: `LABEL` (name of the machine in the results), `OUT` (result folder, default `~/bench-results/<label>-<time>`), `ROUNDS` (repeats of cpu, mem and web, default 3), `MEM_ROUNDS`, `WEB_ROUNDS` (one of them), `DISK_ROUNDS` (default 1), `PG_ROUNDS` (default 1), `QUICK=1` (short smoke run, **not** for real numbers), `FIO_SIZE` (default `8G`), `DATA_DIR`, `DB_DIR`, `WAL_DIR`, `PGPORT`, `PGDATABASE`, `PG_SCALE`, `CB` (cpubench folder), `NVME_DEVS`, `SUSTAIN_MINUTES`, `SUSTAIN_50_MINUTES`, `TJMAX` (see [Bare metal](#bare-metal)), `XLSX=1` (also write `review.xlsx` at the end, see [Reports](#reports)), `XLSX_LAYOUT=FILE` (the `layout.tsv` for it; implies `XLSX=1`), `NOTIFY=1` (send a summary and the reports to Telegram at the end, see [Telegram](#telegram)), `WEB_SERVER_CPUS` / `WEB_LOAD_CPUS` (the CPU sets of the loopback web test, default the two halves of the vCPUs). `vmbench run --help` lists them all.
 
 ### Rounds
 
@@ -138,7 +138,7 @@ Every stage that repeats writes one row per value per round into `results.tsv` (
 |---|---|---|---|
 | `cpu` | 3 | `--rounds N`, `ROUNDS` | every cpu test (about 6 min) |
 | `mem` | 3 | `--rounds N`, `MEM_ROUNDS` | STREAM and `lat_mem_rd` once (about 1 min; `stream.c` is compiled once) |
-| `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 6 min) |
+| `web` | 3 | `--rounds N`, `WEB_ROUNDS` | one loopback web test (about 6 min); the server and the load generator each get half of the vCPUs (`WEB_SERVER_CPUS` and `WEB_LOAD_CPUS`, taskset lists, replace the split; one vCPU skips the stage) |
 | `disk` | 1 | `--disk-rounds N`, `DISK_ROUNDS` | round 1 is the whole sequence; rounds 2 to N repeat only the 4 KiB random-read latency (p99, p99.9), random read, 70/30 mix and the WAL `fdatasync` test (about 20 min each) |
 | `pg` | 1 | `PG_ROUNDS` | the data is loaded once; every round is CHECKPOINT, 1 min warm-up, the 10 min TPC-B run and the 5 min single-session run (about 16 min) |
 

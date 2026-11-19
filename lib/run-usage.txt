@@ -38,6 +38,7 @@ Settings (environment variables):
   ROUNDS       repeats of cpu, mem and web                   (default: 3)
   MEM_ROUNDS WEB_ROUNDS  repeats of one of them                (default: ROUNDS)
   DISK_ROUNDS  repeats of the disk stage                     (default: 1)
+  WEB_SERVER_CPUS WEB_LOAD_CPUS  taskset CPU lists of the loopback web test (default: the two halves of the vCPUs)
   PG_ROUNDS    repeats of the pg measurements (data loaded once) (default: 1)
   PG_SCALE     pgbench scale factor                          (default: data of 1.5 x RAM, capped by free space)
   QUICK        1 = short smoke run                           (default: 0)

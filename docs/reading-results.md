@@ -249,6 +249,7 @@ Runs a small HTTP server and a load generator from cpubench on the same machine 
 How to read the web group:
 
 - Both the server and the load generator run on the same VM, so this measures the CPU's capacity for HTTP work, not the network.
+- The server gets half of the vCPUs and the load generator the other half (2 vCPUs: 0 | 1, 8: 0-3 | 4-7, 16: 0-7 | 8-15; the log and `meta.json` `web_cpus` say which). So the value grows with the machine and stands for half of it. Runs from vmbench 0.2.2 and older always used 0-3 | 4-7: they failed below 5 vCPUs and used only 8 CPUs on bigger machines, so do not compare their web value with newer runs of a machine that does not have exactly 8 vCPUs.
 - The rate rises in fixed steps, so values are rounded to a step and the CV is often 0%. A CV of 0% here does not prove the machine is perfectly steady.
 - Because the load generator shares the vCPUs with the server, it can run out of CPU first. The run log reminds you to check this in the cpubench CPU logs saved in the result folder; if the load generator was the limit, the value is a lower bound for the server.
 
