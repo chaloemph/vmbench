@@ -78,6 +78,7 @@ meta_rounds() { # env... : prints "<rounds> <rounds_by_stage>" of an info-only r
 r=$(meta_rounds ROUNDS=3 WEB_ROUNDS=2 DISK_ROUNDS=4)
 [ "$r" = "3 {'cpu': 3, 'mem': 3, 'disk': 4, 'web': 2}" ] && check "meta.json records the rounds of every stage" 0 || check "meta.json records the rounds of every stage" 1 "got: $r"
 r=$(meta_rounds META_KEY=pg_profile PG_PROFILE_USED=production); [ "${r##* }" = production ] && check "meta.json records the pg setup profile" 0 || check "meta.json records the pg setup profile" 1 "got: $r"
+r=$(meta_rounds META_KEY=web_cpus WEB_CPUS_USED='0-3|4-7'); [ "${r##* }" = '0-3|4-7' ] && check "meta.json records the web loopback CPU split" 0 || check "meta.json records the web loopback CPU split" 1 "got: $r"
 r=$(meta_rounds META_KEY=pg_profile); [ "${r##* }" = None ] && check "meta.json pg_profile is null without the pg stage" 0 || check "meta.json pg_profile is null without the pg stage" 1 "got: $r"
 
 # the real option parser: print what cmd_run decided, by stopping at --list (stub show_stages)
@@ -109,7 +110,7 @@ stage_run() { # stage, env...: runs stage_<stage>_run with the stubs on PATH, pr
     VMBENCH_HOME=$1; s=$2; OUT=$3
     for f in common metrics stream stages; do . "$VMBENCH_HOME/lib/$f.sh"; done
     . "$VMBENCH_HOME/stages/$s.sh"
-    RES=$OUT/results.tsv; STATUS=$OUT/status.tsv; : > "$STATUS"; NPROC=4; QUICK=${QUICK:-1}; LABEL=lbl; DATA_DIR=$OUT/data; DB_DIR=$DATA_DIR; WAL_DIR=$DATA_DIR
+    RES=$OUT/results.tsv; STATUS=$OUT/status.tsv; : > "$STATUS"; NPROC=${NPROC:-4}; QUICK=${QUICK:-1}; LABEL=lbl; DATA_DIR=$OUT/data; DB_DIR=$DATA_DIR; WAL_DIR=$DATA_DIR
     FIO_SIZE=64M; RAW_DEV=; CB=${CB:-$OUT/cb}; MEM_AVAIL_KB=1000000
     printf "id\tmetric\tvalue\tunit\tround\n" > "$RES"; mkdir -p "$DATA_DIR"
     "stage_${s}_run" > "$OUT/stage.out" 2>&1
@@ -170,6 +171,7 @@ STUB
   cat > "$TMP/cb/web-loopback.sh" <<'STUB'
 #!/usr/bin/env bash
 mkdir -p results/web; echo "{\"web\":{\"knee_rps\":2222}}" > "results/web/$1-mix.json"
+[ -n "${WEB_CPUS_LOG:-}" ] && echo "${SERVER_CPUS:-unset}|${LOAD_CPUS:-unset}" >> "$WEB_CPUS_LOG"
 STUB
   chmod +x "$TMP/cb/web-loopback.sh"
   rm -rf "$TMP/st-web"; mkdir -p "$TMP/st-web"
@@ -177,6 +179,32 @@ STUB
   if [ "$(count '^web\.cpubench\.mix\.max-rps\t[^\t]*\t2222\t[^\t]*\t[12]$' "$res")" = 2 ] && [ "$(count '^web	lbl-web-r[12]-mix.json	OK' "$res")" = 2 ] && [ -s "$TMP/st-web/lbl-web-r2-mix.json" ]; then
     check "web, full path: web-loopback.sh gets a label per round and each round is read" 0
   else check "web, full path: web-loopback.sh gets a label per round and each round is read" 1 "$res"; fi
+  # the loopback CPU split follows the vCPU count (cpubench's own default 0-3 | 4-7 fails below 5 vCPUs)
+  websplit() { # NPROC, env... : the SERVER|LOAD lists web-loopback.sh got, one line per round
+    local n=$1; shift; rm -rf "$TMP/st-web" "$TMP/webcpus"; mkdir -p "$TMP/st-web"
+    stage_run web CB="$TMP/cb" WEB_ROUNDS=2 QUICK=0 NPROC="$n" WEB_CPUS_LOG="$TMP/webcpus" "$@" > "$TMP/web.res"
+    sort -u "$TMP/webcpus" 2>/dev/null | tr '\n' ' '
+  }
+  for c in "2 0|1" "3 0-1|2" "8 0-3|4-7" "16 0-7|8-15"; do
+    got=$(websplit "${c% *}"); want="${c#* } "
+    [ "$got" = "$want" ] && check "web: ${c% *} vCPUs -> server|load ${c#* }" 0 || check "web: ${c% *} vCPUs -> server|load ${c#* }" 1 "got '$got'"
+  done
+  grep -q 'web: server on CPUs 0, load generator on CPUs 1 (of 2 vCPUs)' < <(websplit 2 >/dev/null; cat "$TMP/st-web/stage.out") \
+    && check "web: the split is written to the log" 0 || check "web: the split is written to the log" 1 "$(cat "$TMP/st-web/stage.out")"
+  got=$(websplit 16 WEB_SERVER_CPUS=2-5 WEB_LOAD_CPUS=6,7)
+  [ "$got" = "2-5|6,7 " ] && check "web: WEB_SERVER_CPUS / WEB_LOAD_CPUS replace the split" 0 || check "web: WEB_SERVER_CPUS / WEB_LOAD_CPUS replace the split" 1 "got '$got'"
+  got=$(websplit 1); res=$(cat "$TMP/web.res")
+  [ -z "$got" ] && [ "$(count '^web\.' "$res")" = 0 ] && [ "$(count '^web	all	SKIP needs 2 or more vCPUs' "$res")" = 1 ] \
+    && check "web: 1 vCPU is skipped with the reason, web-loopback.sh is not started" 0 || check "web: 1 vCPU is skipped with the reason, web-loopback.sh is not started" 1 "got '$got'" "$res"
+  # pre-flight: one vCPU, or only one of the two overrides, is refused
+  webcheck() { env PATH="$TMP/stubs:$PATH" "$@" bash -c '
+    VMBENCH_HOME=$1; for f in common preflight; do . "$1/lib/$f.sh"; done; . "$1/stages/web.sh"
+    PROBLEMS=(); QUICK=0; CB=$2; stage_web_check; printf "%s\n" "${PROBLEMS[@]}"' _ "$ROOT" "$TMP/cb"; }
+  printf '#!/usr/bin/env bash\necho "${NPROC_STUB:-8}"\n' > "$TMP/stubs/nproc"; chmod +x "$TMP/stubs/nproc"
+  out=$(webcheck NPROC_STUB=1); [[ $out == *"web needs 2 or more vCPUs"* ]] && check "web pre-flight refuses 1 vCPU" 0 || check "web pre-flight refuses 1 vCPU" 1 "$out"
+  out=$(webcheck NPROC_STUB=8 WEB_SERVER_CPUS=0-3); [[ $out == *"set both WEB_SERVER_CPUS and WEB_LOAD_CPUS"* ]] && check "web pre-flight refuses only one override" 0 || check "web pre-flight refuses only one override" 1 "$out"
+  out=$(webcheck NPROC_STUB=2); [[ $out != *"vCPU"* && $out != *"WEB_"* ]] && check "web pre-flight accepts 2 vCPUs" 0 || check "web pre-flight accepts 2 vCPUs" 1 "$out"
+  rm -f "$TMP/stubs/nproc"
 
   # pg: stub psql and pgbench. The checkpoint counter lives in a file: every pgbench run bumps it once, so each measured
   # run is seen to contain one checkpoint, and psql returns the counter for the pg_stat_checkpointer query.
