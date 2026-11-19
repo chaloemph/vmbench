@@ -106,7 +106,7 @@ class ArmCpuModel(unittest.TestCase):
     def test_hisilicon_d01_with_model_name_dash(self):
         # synthetic: util-linux older than 2.35 has no HiSilicon table and prints "-" for a Kunpeng 920 too
         c = self.cpu("arm-kunpeng920-oldlscpu")
-        self.assertEqual((c["vendor"], c["model"]), ("HiSilicon", "Kunpeng-920 (TSV110)"))
+        self.assertEqual((c["vendor"], c["model"]), ("HiSilicon", "Kunpeng-920"))
         self.assertEqual((c["family"], c["model_id"], c["stepping"]), ("0x48", "0xd01", "r1p0"))
         self.assertEqual((c["sockets"], c["cores_per_socket"]), (1, 16))   # the rest of lscpu is still read
 

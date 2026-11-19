@@ -10,7 +10,7 @@ null (or [] / {}). Nothing here raises on odd input: a part that cannot be parse
 Schema 1 (see docs/reading-results.md, "Bare metal"):
   cpu      vendor, model, family, model_id, stepping (strings: ARM steppings look like r3p1; on ARM with cpu-id.txt
            family is the MIDR implementer "0x48", model_id the part "0xd01", and a model lscpu does not name comes
-           from the part: "Kunpeng-920 (TSV110)", else "HiSilicon part 0xd0f"; without cpu-id.txt it is
+           from the part: "Kunpeng-920", else "HiSilicon part 0xd0f"; without cpu-id.txt it is
            "HiSilicon (model not reported, SVE2)", never "-"), microcode, sockets,
            cores_per_socket, threads_per_core, numa_nodes (int), mhz_min, mhz_max (float), cache {l1d l1i l2 l3}
   freq     driver, governor, min_khz, max_khz, scaling_min_khz, scaling_max_khz, turbo ("on"/"off"), smt,
@@ -146,7 +146,7 @@ ARM_PARTS = {
     (0x41, 0xd03): "Cortex-A53", (0x41, 0xd07): "Cortex-A57", (0x41, 0xd08): "Cortex-A72",
     (0x41, 0xd0b): "Cortex-A76", (0x41, 0xd0c): "Neoverse-N1", (0x41, 0xd40): "Neoverse-V1",
     (0x41, 0xd49): "Neoverse-N2", (0x41, 0xd4f): "Neoverse-V2",
-    (0x48, 0xd01): "Kunpeng-920 (TSV110)",
+    (0x48, 0xd01): "Kunpeng-920",
     (0xc0, 0xac3): "Ampere-1", (0xc0, 0xac4): "Ampere-1a",
 }
 
