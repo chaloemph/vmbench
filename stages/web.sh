@@ -50,6 +50,7 @@ stage_web_run() {
   if [ "$QUICK" != 1 ]; then
     split=$(web_cpu_split "${NPROC:-$(nproc)}") || { skip web all "needs 2 or more vCPUs to split between server and load generator (or WEB_SERVER_CPUS and WEB_LOAD_CPUS)"; return; }
     srv=${split% *}; ld=${split#* }
+    # shellcheck disable=SC2034  # WEB_CPUS_USED is read by write_meta (lib/meta.sh)
     WEB_CPUS_USED="$srv|$ld"
     log "web: server on CPUs $srv, load generator on CPUs $ld (of ${NPROC:-$(nproc)} vCPUs)"
   fi
