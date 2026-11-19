@@ -1,0 +1,8 @@
+Architecture:             aarch64
+CPU(s):                   8
+Vendor ID:                HiSilicon
+  Model name:             -
+    Model:                2
+    Thread(s) per core:   1
+    Core(s) per cluster:  8
+    Stepping:             0x2

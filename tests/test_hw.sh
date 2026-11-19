@@ -310,7 +310,7 @@ info_hw "$TMP/info1" "$TMP/stubs-info:$TMP/stubs"
 j=$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["schema"], d["cpu"]["model"], d["cpu"]["stepping"], d["system"]["bmc"]["firmware"], d["memory"]["source"], d["memory"]["populated"], d["bmc"]["power_w"], d["bmc"]["fans"]["FAN1"])' "$TMP/info1/hardware.json" 2>&1)
 [ "$j" = "1 Stub CPU 9000 8 1.23 dmidecode 2 250 5040" ] && check "info: hardware.json loads, cpu.model, DIMMs, BMC firmware and power from the stubs" 0 \
   || check "info: hardware.json from the stubs" 1 "got: $j" "$(cat "$TMP/info1/stage.out")"
-[ -s "$TMP/info1/hw/lscpu.txt" ] && [ -s "$TMP/info1/hw/dmidecode-memory.txt" ] && [ -s "$TMP/info1/hw/ipmi-dcmi-power.txt" ] && [ -s "$TMP/info1/hw/cpufreq.txt" ] \
+[ -s "$TMP/info1/hw/lscpu.txt" ] && grep -q "^midr_el1=" "$TMP/info1/hw/cpu-id.txt" && [ -s "$TMP/info1/hw/dmidecode-memory.txt" ] && [ -s "$TMP/info1/hw/ipmi-dcmi-power.txt" ] && [ -s "$TMP/info1/hw/cpufreq.txt" ] \
   && check "info: hw/ keeps the raw output of each command" 0 || check "info: hw/ keeps the raw output of each command" 1 "$(ls "$TMP/info1/hw")"
 grep -q '^Model name: *Stub CPU 9000' "$TMP/info1/hardware.txt" && grep -q '^dimms populated: 2 of 2 slots' "$TMP/info1/hardware.txt" && grep -q 'Firmware Revision *: 1.23' "$TMP/info1/hardware.txt" \
   && grep -q '^--- disks' "$TMP/info1/hardware.txt" && check "info: hardware.txt still has the cpu, memory, BMC and disk sections" 0 || check "info: hardware.txt sections" 1 "$(cat "$TMP/info1/hardware.txt")"

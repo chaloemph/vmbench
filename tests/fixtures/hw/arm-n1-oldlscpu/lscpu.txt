@@ -1,0 +1,15 @@
+Architecture:        aarch64
+Byte Order:          Little Endian
+CPU(s):              4
+On-line CPU(s) list: 0-3
+Thread(s) per core:  1
+Core(s) per socket:  4
+Socket(s):           1
+NUMA node(s):        1
+Vendor ID:           ARM
+Model:               1
+Stepping:            r3p1
+L1d cache:           64K
+L1i cache:           64K
+L2 cache:            1024K
+NUMA node0 CPU(s):   0-3

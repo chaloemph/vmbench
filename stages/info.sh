@@ -44,6 +44,12 @@ info_hardware_raw() {
   lscpu > "$hw/lscpu.txt" 2>/dev/null || hw_unavailable "lscpu: failed"
   printf 'proc=%s\nsysfs=%s\n' "$(grep -m1 microcode /proc/cpuinfo 2>/dev/null | awk '{print $3}')" \
     "$(cat /sys/devices/system/cpu/cpu0/microcode/version 2>/dev/null)" > "$hw/cpuinfo-microcode.txt"
+  # ARM: the MIDR fields of cpu0 (what the CPU is, when lscpu has no name for it: "Model name: -"); empty on x86
+  {
+    for f in implementer variant part revision; do
+      printf '%s=%s\n' "$f" "$(sed -n "s/^CPU ${f}[[:space:]]*:[[:space:]]*//p" /proc/cpuinfo 2>/dev/null | head -1)"; done
+    printf 'midr_el1=%s\n' "$(cat /sys/devices/system/cpu/cpu0/regs/identification/midr_el1 2>/dev/null)"
+  } > "$hw/cpu-id.txt"
   {
     for f in scaling_driver scaling_governor cpuinfo_min_freq cpuinfo_max_freq scaling_min_freq scaling_max_freq; do
       printf '%s=%s\n' "$f" "$(cat "/sys/devices/system/cpu/cpu0/cpufreq/$f" 2>/dev/null)"; done
@@ -106,6 +112,7 @@ info_hardware() {
     echo "--- cpu (model, stepping, microcode)"
     grep -E '^ *(Vendor ID|Model name|CPU family|Model|Stepping|Socket\(s\)|Core\(s\) per socket|Thread\(s\) per core|NUMA node\(s\)|CPU max MHz|CPU min MHz|L1d|L1i|L2|L3)' "$hw/lscpu.txt"
     echo "microcode: $(sed -n 's/^proc=//p' "$hw/cpuinfo-microcode.txt")  /sys: $(sed -n 's/^sysfs=//p' "$hw/cpuinfo-microcode.txt")"
+    grep -qE '^(part|midr_el1)=.' "$hw/cpu-id.txt" 2>/dev/null && echo "cpu id (MIDR): $(paste -sd' ' "$hw/cpu-id.txt")"
     echo "--- cpu frequency and idle (the BIOS power profile, turbo and C-states show here)"
     grep -E '^(scaling|cpuinfo)_' "$hw/cpufreq.txt" | paste -sd' '
     echo "boost: intel_pstate/no_turbo=$(sed -n 's/^no_turbo=//p' "$hw/cpufreq.txt") cpufreq/boost=$(sed -n 's/^boost=//p' "$hw/cpufreq.txt")"
