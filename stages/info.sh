@@ -47,7 +47,7 @@ info_hardware_raw() {
   # ARM: the MIDR fields of cpu0 (what the CPU is, when lscpu has no name for it: "Model name: -"); empty on x86
   {
     for f in implementer variant part revision; do
-      printf '%s=%s\n' "$f" "$(sed -n "s/^CPU $f[[:space:]]*:[[:space:]]*//p" /proc/cpuinfo 2>/dev/null | head -1)"; done
+      printf '%s=%s\n' "$f" "$(sed -n "s/^CPU ${f}[[:space:]]*:[[:space:]]*//p" /proc/cpuinfo 2>/dev/null | head -1)"; done
     printf 'midr_el1=%s\n' "$(cat /sys/devices/system/cpu/cpu0/regs/identification/midr_el1 2>/dev/null)"
   } > "$hw/cpu-id.txt"
   {
