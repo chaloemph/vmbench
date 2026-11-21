@@ -140,7 +140,7 @@ The report's disk warning (only when `RAW_DEV` was not set) follows that line:
 | `unknown` | measured on a file in `fio_dir`, which disk holds it could not be told; on `tmpfs` it says the values are memory, not storage, and on a network or host-shared filesystem (NFS, CIFS, 9p, virtiofs, ...) that the network and the server's cache are in the numbers |
 | missing (vmbench 0.2.4 or older) | measured on a file in the data directory, which disk was not recorded |
 
-When the compared runs fall into different cases, there is one warning per case, each naming its runs. The environment table shows the case next to the file size: `8G (other: /dev/mapper/datavg-bench) / none`.
+Runs of the same case share one warning; a folder or device that differs between them is listed per run (`/data on a separate disk (x86: /dev/sdb, arm: /dev/vdb)`). When the compared runs fall into different cases, or one of them used `RAW_DEV`, each warning names its runs. The environment table shows the case next to the file size: `8G (other: /dev/mapper/datavg-bench) / none`.
 
 **Random 4 KiB, many requests at once** (capacity under concurrent load):
 

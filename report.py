@@ -682,14 +682,25 @@ def disk_case(run):
 
 
 def disk_warning(runs):
-    """One warning about the fio test file per distinct case; with more than one case each names its runs."""
+    """One warning about the fio test file per case (OS disk, separate disk, ...). Runs of the same case share it, and
+    a folder or device that differs between them is listed per run ("/data on a separate disk (a: /dev/sdb, b:
+    /dev/vdb)"). The warning names its runs when not every run with disk results is in it (other cases, a raw device)."""
     tested = [r for r in runs if any(section_of(m.id) == "Disk" for m in r.metrics)]
     cases = {}
     for r in tested:
         if r.info.get("raw_dev", "none") == "none":
-            cases.setdefault(disk_case(r), []).append(r.label)
-    return [t(key, who="" if len(cases) == 1 else f" ({', '.join(labels)})", **dict(kw))
-            for (key, kw), labels in cases.items()]
+            key, kw = disk_case(r)
+            cases.setdefault(key, []).append((r.label, dict(kw)))
+    out = []
+    for key, items in cases.items():
+        labels = [label for label, _ in items]
+        fields = {}
+        for name in items[0][1]:
+            values = [kw[name] for _, kw in items]
+            fields[name] = values[0] if len(set(values)) == 1 else ", ".join(f"{a}: {v}" for a, v in zip(labels, values))
+        who = "" if len(items) == len(tested) else f" ({', '.join(labels)})"
+        out.append(t(key, who=who, **fields))
+    return out
 
 
 # ---- hardware.json (shared with xlsx.py) ----

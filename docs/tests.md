@@ -202,7 +202,7 @@ Result folders written before the IDs existed have a `results.tsv` with the head
 
 `bash tests/run.sh` runs these groups, none of which needs a benchmark tool or the network:
 
-- `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings, the Hardware differences table of `compare` (only fields that differ, list counts, no table and a warning without `hardware.json`, text / md / html, Thai) and that `xlsx.py` uses the same hardware.json helpers, and the disk warning for each `fio_where` case (os, other, unknown, tmpfs, NFS, and a v0.2.4 folder without the key) in English and Thai
+- `tests/test_report.py`: `report.py`: reading folders, tables, comparisons, warnings, the Hardware differences table of `compare` (only fields that differ, list counts, no table and a warning without `hardware.json`, text / md / html, Thai) and that `xlsx.py` uses the same hardware.json helpers, and the disk warning for each `fio_where` case (os, other, unknown, tmpfs, NFS, and a v0.2.4 folder without the key) in English and Thai, one warning per case in a compare (the devices listed per run when they differ, the runs named when the cases differ or a raw device is in it)
 - `tests/test_lang.py`: the English and Thai message catalogs, `--lang`, `VMBENCH_LANG`, no Thai in English output
 - `tests/test_ids.py`: the metric table (`lib/metrics.sh`), this file, the legacy mapping, the `rec` calls in `lib/` and `stages/`, and that `docs/reading-results.md` and `docs/reading-results.th.md` each name every metric ID, no ID that does not exist, and the same IDs as each other
 - `tests/test_cli.sh`: `run-benchmark.sh` options, error messages, exit codes, pre-flight, `--list`, the `info` stage, `meta.json`

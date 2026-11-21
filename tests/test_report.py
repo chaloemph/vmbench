@@ -537,6 +537,23 @@ class DiskWarning(unittest.TestCase):
         self.assertEqual(self.warn("disk-os", "disk-os"), self.warn("disk-os"))
         self.assertEqual(self.warn("disk-old", "rounds-a"), self.warn("disk-old"))
 
+    def test_same_case_on_different_devices_gives_one_warning(self):
+        # two machine types, each with a separate data disk under another name: one line, the devices per run
+        a, b = fixture("disk-other"), fixture("disk-other")
+        a.label, b.label = "x86", "arm"
+        b.info["fio_fs"] = "/dev/vdb"
+        self.assertEqual(report.disk_warning([a, b]), [
+            "Disk: measured on a file in /bench/bench data on a separate disk (x86: /dev/mapper/datavg-bench, "
+            "arm: /dev/vdb), not the OS disk. Host cache and hypervisor settings may still be in the numbers, so "
+            "check that disk's cache mode"])
+
+    def test_file_runs_are_named_next_to_a_raw_device_run(self):
+        raw = fixture("disk-other")
+        raw.label, raw.info["raw_dev"] = "raw", "/dev/nvme1n1"
+        out = report.disk_warning([fixture("disk-os"), raw])
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0].startswith("Disk (disk-os): measured on a file on the OS disk"), out)
+
     def test_different_cases_give_one_warning_each_with_labels(self):
         out = self.warn("disk-os", "disk-other", "disk-old")
         self.assertEqual(len(out), 3)
