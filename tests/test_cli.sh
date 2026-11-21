@@ -95,6 +95,9 @@ if [ "$RC" = 0 ]; then check "info stage exits 0" 0; else check "info stage exit
 if [ -f "$TMP/out/info.txt" ] && grep -q '^label: ci-label' "$TMP/out/info.txt" && grep -q '^nproc: ' "$TMP/out/info.txt"; then
   check "info.txt records the label and the vCPU count" 0
 else check "info.txt records the label and the vCPU count" 1; fi
+if [ -f "$TMP/out/info.txt" ] && grep -qE '^fio_where: (os|other|unknown)  fio_fs: [^ ]+  fio_dir: .' "$TMP/out/info.txt"; then
+  check "info.txt records where the fio test file lives (fio_where, fio_fs, fio_dir)" 0
+else check "info.txt records where the fio test file lives (fio_where, fio_fs, fio_dir)" 1 "$(grep '^fio_' "$TMP/out/info.txt" 2>/dev/null)"; fi
 if [ -f "$TMP/out/hardware.txt" ] && grep -q '^--- cpu' "$TMP/out/hardware.txt" && grep -q '^microcode:' "$TMP/out/hardware.txt" && grep -q '^--- disks' "$TMP/out/hardware.txt" \
    && ! grep -qi 'serial number' "$TMP/out/hardware.txt" && grep -qP '^info\thardware\tOK$' "$TMP/out/status.tsv"; then
   check "hardware.txt records the CPU, firmware and disk facts without serial numbers" 0

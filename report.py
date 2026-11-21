@@ -227,8 +227,20 @@ MESSAGES = {
         "hwdiff.summary": "hardware.json: {n} fields compared, {m} differ",
         "hwdiff.count": "{name} count",
         "warn.no_hwjson": "no hardware.json for {labels} (vmbench v0.1.0 or older, or the info stage failed), so hardware differences are not shown",
-        "warn.disk": "Disk: measured on a file on the OS disk, so the numbers may include host cache and hypervisor settings. "
+        "warn.disk": "Disk{who}: measured on a file on the OS disk, so the numbers may include host cache and hypervisor settings. "
                      "Check the cache mode before concluding which storage is better",
+        "warn.disk.other": "Disk{who}: measured on a file in {dir} on a separate disk ({fs}), not the OS disk. "
+                           "Host cache and hypervisor settings may still be in the numbers, so check that disk's cache mode",
+        "warn.disk.unknown": "Disk{who}: measured on a file in {dir} ({fs}); which disk holds it could not be told, so the numbers "
+                             "may include host cache and hypervisor settings. Check the storage behind it and its cache mode "
+                             "before concluding which storage is better",
+        "warn.disk.memory": "Disk{who}: measured on a file in {dir} on {fs}, which is memory, not a disk: the disk values are "
+                            "not storage results",
+        "warn.disk.network": "Disk{who}: measured on a file in {dir} on a network or host-shared filesystem ({fs}), so the "
+                             "numbers include the network and the server's cache, not only a disk",
+        "warn.disk.unrecorded": "Disk{who}: measured on a file in the data directory, not on a raw device; which disk holds it "
+                                "was not recorded (vmbench 0.2.4 or older), and the numbers may include host cache and "
+                                "hypervisor settings. Check the cache mode before concluding which storage is better",
     },
     "th": {
         "lang.html": "th",
@@ -291,8 +303,19 @@ MESSAGES = {
         "hwdiff.summary": "hardware.json: เทียบ {n} ฟิลด์ ต่างกัน {m} ฟิลด์",
         "hwdiff.count": "จำนวน {name}",
         "warn.no_hwjson": "ไม่มี hardware.json ของ {labels} (vmbench v0.1.0 หรือเก่ากว่า หรือ stage info ล้มเหลว) จึงไม่แสดงความต่างของฮาร์ดแวร์",
-        "warn.disk": "Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
+        "warn.disk": "Disk{who}: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
                      "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า",
+        "warn.disk.other": "Disk{who}: วัดจากไฟล์ใน {dir} บนดิสก์แยก ({fs}) ไม่ใช่ OS disk "
+                           "ตัวเลขยังอาจรวมผลของ host cache และการตั้งค่า hypervisor ควรตรวจ cache mode ของดิสก์นั้น",
+        "warn.disk.unknown": "Disk{who}: วัดจากไฟล์ใน {dir} ({fs}) ระบุไม่ได้ว่าอยู่บนดิสก์ไหน ตัวเลขอาจรวมผลของ host cache "
+                             "และการตั้งค่า hypervisor ควรตรวจ storage ที่อยู่เบื้องหลังและ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า",
+        "warn.disk.memory": "Disk{who}: วัดจากไฟล์ใน {dir} บน {fs} ซึ่งเป็นหน่วยความจำ ไม่ใช่ดิสก์ "
+                            "ค่ากลุ่ม disk จึงไม่ใช่ผลของ storage",
+        "warn.disk.network": "Disk{who}: วัดจากไฟล์ใน {dir} บน filesystem ทางเครือข่ายหรือที่แชร์จาก host ({fs}) "
+                             "ตัวเลขจึงรวมผลของเครือข่ายและ cache ของเซิร์ฟเวอร์ ไม่ใช่แค่ดิสก์",
+        "warn.disk.unrecorded": "Disk{who}: วัดจากไฟล์ใน data directory ไม่ใช่ raw device ไม่ได้บันทึกว่าอยู่บนดิสก์ไหน "
+                                "(vmbench 0.2.4 หรือเก่ากว่า) ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
+                                "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า",
     },
 }
 LANGS = tuple(MESSAGES)
@@ -357,10 +380,13 @@ class Run:
             m = re.search(rf"^{key}:[ \t]*(.+)$", text, re.M)
             if m:
                 info[key] = m.group(1).strip()
-        for key in ("nproc", "ram_gb", "quick", "rounds", "fio_size", "raw_dev"):
+        for key in ("nproc", "ram_gb", "quick", "rounds", "fio_size", "raw_dev", "fio_where", "fio_fs"):
             m = re.search(rf"(?:^|\s){key}:[ \t]*(\S+)", text, re.M)
             if m:
                 info[key] = m.group(1)
+        m = re.search(r"(?:^|\s)fio_dir:[ \t]*(.+)$", text, re.M)   # last on its line: a path may hold spaces
+        if m:
+            info["fio_dir"] = m.group(1).strip()
         for key, name in (("model", "Model name"), ("vendor", "Vendor ID")):
             m = re.search(rf"^{name}:[ \t]*(.+)$", text, re.M)
             if m:
@@ -553,6 +579,11 @@ def env_table(runs):
         c = collections.Counter(p[2].split(" ", 1)[0] for p in r.problems)
         return ", ".join(f"{k} {v}" for k, v in sorted(c.items())) or t("env.no_problems")
 
+    def fio_cell(r):
+        where = r.info.get("fio_where")
+        size = r.info.get("fio_size", "-") + (f" ({where}: {r.info.get('fio_fs', '-')})" if where else "")
+        return f"{size} / {r.info.get('raw_dev', '-')}"
+
     fields = [(t("env.date"), lambda r: r.info.get("date", "-")),
               ("vmbench", lambda r: r.version or "-"),
               (t("env.stages"), lambda r: " ".join(s for s in r.stages if s != "info") or "-"),
@@ -564,7 +595,7 @@ def env_table(runs):
               ("Hypervisor", lambda r: r.info.get("virt", "-")),
               ("cpubench", lambda r: r.info.get("cpubench", "-")),
               (t("env.rounds"), lambda r: f"{r.info.get('rounds', '-')} / {r.info.get('quick', '-')}"),
-              (t("env.fio"), lambda r: f"{r.info.get('fio_size', '-')} / {r.info.get('raw_dev', '-')}"),
+              (t("env.fio"), fio_cell),
               ("STREAM N", lambda r: r.stream_n or "-"),
               (t("env.pg_profile"), pg_profile),
               ("CPU steal", steal),
@@ -626,11 +657,39 @@ def compare_warnings(runs):
     return out
 
 
+# fio_fs of a test file that is not on a local block device (info.txt then has only the filesystem type)
+MEMORY_FS = {"tmpfs", "ramfs"}
+NETWORK_FS = {"nfs", "nfs4", "cifs", "smb3", "smbfs", "ceph", "glusterfs", "fuse.glusterfs", "fuse.sshfs", "9p",
+              "virtiofs", "lustre", "gpfs", "beegfs"}
+
+
+def disk_case(run):
+    """(message key, placeholders) for where the fio test file of a run was: info.txt fio_where / fio_fs / fio_dir
+    (vmbench 0.2.5+). A folder without them (0.2.4 or older) gets a wording that does not say which disk."""
+    where = run.info.get("fio_where")
+    fs, folder = run.info.get("fio_fs", "-"), run.info.get("fio_dir", "-")
+    if where is None:
+        return "warn.disk.unrecorded", ()
+    if where == "os":
+        return "warn.disk", ()
+    if where == "other":
+        return "warn.disk.other", (("dir", folder), ("fs", fs))
+    if fs in MEMORY_FS:
+        return "warn.disk.memory", (("dir", folder), ("fs", fs))
+    if fs in NETWORK_FS:
+        return "warn.disk.network", (("dir", folder), ("fs", fs))
+    return "warn.disk.unknown", (("dir", folder), ("fs", fs))
+
+
 def disk_warning(runs):
+    """One warning about the fio test file per distinct case; with more than one case each names its runs."""
     tested = [r for r in runs if any(section_of(m.id) == "Disk" for m in r.metrics)]
-    if any(r.info.get("raw_dev", "none") == "none" for r in tested):
-        return [t("warn.disk")]
-    return []
+    cases = {}
+    for r in tested:
+        if r.info.get("raw_dev", "none") == "none":
+            cases.setdefault(disk_case(r), []).append(r.label)
+    return [t(key, who="" if len(cases) == 1 else f" ({', '.join(labels)})", **dict(kw))
+            for (key, kw), labels in cases.items()]
 
 
 # ---- hardware.json (shared with xlsx.py) ----

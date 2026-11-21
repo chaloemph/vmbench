@@ -107,5 +107,72 @@ lat=$(env PATH="$TMP/pf:$PATH" bash -c 'set -uo pipefail; . "$1/stages/mem.sh"; 
 hits=$(grep -nE '\|[^|]*\bgrep +(-[a-zA-Z]*[qm]|--quiet|--max-count)' "$ROOT/vmbench" "$ROOT"/lib/*.sh "$ROOT"/stages/*.sh "$ROOT"/setup/*.sh | grep -vE ':[0-9]+:\s*#')
 [ -z "$hits" ] && check "no 'cmd | grep -q/-m' in vmbench, lib/, stages/, setup/ (pipefail)" 0 || check "no 'cmd | grep -q/-m' in vmbench, lib/, stages/, setup/ (pipefail)" 1 "$hits"
 
+# --- info_fio_where: where the fio test file of the disk stage lives (info.txt "fio_where: ..."), from stub findmnt
+# and lsblk that describe a machine. FM_<key>_src / FM_<key>_fs is what `findmnt -no SOURCE|FSTYPE -T <dir>` prints
+# (key: root for /, data for every other folder); LS_<device> is what `lsblk -nlso NAME,TYPE <device>` prints (the
+# chain up to the disks; "-" and other characters of the name become "_").
+mkdir -p "$TMP/fw" "$TMP/fw-data/bench data"
+cat > "$TMP/fw/findmnt" <<'STUB'
+#!/usr/bin/env bash
+[ "${FM_FAIL:-}" = 1 ] && exit 1
+key=data; [ "$4" = / ] && key=root
+case $2 in SOURCE) v=FM_${key}_src ;; FSTYPE) v=FM_${key}_fs ;; *) exit 1 ;; esac
+printf '%s\n' "${!v:-}"
+STUB
+cat > "$TMP/fw/lsblk" <<'STUB'
+#!/usr/bin/env bash
+[ "${LS_FAIL:-}" = 1 ] && { echo "lsblk: not a block device" >&2; exit 32; }
+v=LS_$(basename "$3" | tr -c 'a-zA-Z0-9\n' _)
+[ -n "${!v:-}" ] || exit 32
+printf '%b\n' "${!v}"
+STUB
+chmod +x "$TMP/fw/findmnt" "$TMP/fw/lsblk"
+fio_where_of() { # DIR env... : the info.txt line for DIR with the stub tools, run like vmbench (pipefail)
+  local dir=$1; shift
+  env PATH="$TMP/fw:$PATH" "$@" bash -c 'set -uo pipefail; VMBENCH_HOME=$1; . "$1/lib/common.sh"; . "$1/stages/info.sh"; info_fio_where "$2"' \
+    _ "$ROOT" "$dir" 2>&1
+}
+d="$TMP/fw-data/bench data"
+fio_where() { fio_where_of "$d" "$@"; }
+fw_check() { # name expected-where expected-fs got
+  local want="fio_where: $2  fio_fs: $3  fio_dir: $d"
+  [ "$4" = "$want" ] && check "info_fio_where: $1" 0 || check "info_fio_where: $1" 1 "want: $want" "got:  $4"
+}
+ROOT_LVM=(FM_root_src=/dev/mapper/ubuntu--vg-ubuntu--lv FM_root_fs=ext4 'LS_ubuntu__vg_ubuntu__lv=ubuntu--vg-ubuntu--lv lvm\nsda3 part\nsda disk')
+DATA_LV=(FM_data_src=/dev/mapper/datavg-bench FM_data_fs=ext4 'LS_datavg_bench=datavg-bench lvm\nsdb1 part\nsdb disk')
+# the POC layout: / on an LV on sda, DATA_DIR on an LV of another VG on sdb
+fw_check "an LV on a second disk is other" other /dev/mapper/datavg-bench "$(fio_where "${ROOT_LVM[@]}" "${DATA_LV[@]}")"
+fw_check "an LV in the VG of / is os" os /dev/mapper/ubuntu--vg-bench \
+  "$(fio_where "${ROOT_LVM[@]}" FM_data_src=/dev/mapper/ubuntu--vg-bench FM_data_fs=xfs 'LS_ubuntu__vg_bench=ubuntu--vg-bench lvm\nsda3 part\nsda disk')"
+fw_check "a folder on / (the default ~/bench-data) is os" os /dev/mapper/ubuntu--vg-ubuntu--lv \
+  "$(fio_where "${ROOT_LVM[@]}" FM_data_src=/dev/mapper/ubuntu--vg-ubuntu--lv FM_data_fs=ext4)"
+fw_check "a second virtio disk is other" other /dev/vdb \
+  "$(fio_where FM_root_src=/dev/vda1 FM_root_fs=ext4 'LS_vda1=vda1 part\nvda disk' FM_data_src=/dev/vdb FM_data_fs=ext4 'LS_vdb=vdb disk')"
+fw_check "a RAID that uses the disk of / is os" os /dev/md0 \
+  "$(fio_where FM_root_src=/dev/sda2 FM_root_fs=ext4 'LS_sda2=sda2 part\nsda disk' FM_data_src=/dev/md0 FM_data_fs=ext4 'LS_md0=md0 raid1\nsda3 part\nsda disk\nsdb1 part\nsdb disk')"
+fw_check "btrfs subvolumes of / are os, without the [/subvol] suffix" os /dev/nvme0n1p2 \
+  "$(fio_where 'FM_root_src=/dev/nvme0n1p2[/@]' FM_root_fs=btrfs 'LS_nvme0n1p2=nvme0n1p2 part\nnvme0n1 disk' 'FM_data_src=/dev/nvme0n1p2[/@data]' FM_data_fs=btrfs)"
+# not a local block device: only the filesystem type is kept (an NFS source names a server)
+fw_check "tmpfs is unknown" unknown tmpfs "$(fio_where "${ROOT_LVM[@]}" FM_data_src=tmpfs FM_data_fs=tmpfs)"
+fw_check "NFS is unknown and the server is not recorded" unknown nfs4 \
+  "$(fio_where "${ROOT_LVM[@]}" FM_data_src=fileserver.example:/export/bench FM_data_fs=nfs4)"
+# a container: / is overlay, DATA_DIR a bind mount of a host disk
+fw_check "a container (overlay root) is unknown" unknown /dev/sdb1 \
+  "$(fio_where FM_root_src=overlay FM_root_fs=overlay FM_data_src=/dev/sdb1 FM_data_fs=ext4)"
+# failing tools: unknown, never an error
+fw_check "a failing lsblk gives unknown" unknown /dev/mapper/datavg-bench "$(fio_where "${ROOT_LVM[@]}" "${DATA_LV[@]}" LS_FAIL=1)"
+got=$(fio_where FM_FAIL=1); rc=$?
+[ "$rc" = 0 ] && fw_check "a failing findmnt gives unknown" unknown - "$got" || check "info_fio_where: a failing findmnt exits 0" 1 "rc=$rc"
+# a DATA_DIR that does not exist yet is looked up through its nearest existing parent
+got=$(fio_where_of "$TMP/fw-data/new/sub" "${ROOT_LVM[@]}" "${DATA_LV[@]}")
+[ "$got" = "fio_where: other  fio_fs: /dev/mapper/datavg-bench  fio_dir: $TMP/fw-data/new/sub" ] && check "info_fio_where: a missing DATA_DIR uses its parent" 0 \
+  || check "info_fio_where: a missing DATA_DIR uses its parent" 1 "got: $got"
+# report.py reads the line the info stage writes (the folder name has a space)
+printf 'quick: 0  rounds: 3  fio_size: 8G  raw_dev: none  nvme_devs: none\n%s\n--- lscpu\n' "$(fio_where "${ROOT_LVM[@]}" "${DATA_LV[@]}")" > "$TMP/fw-info.txt"
+got=$(python3 -I -c 'import importlib.util as u, sys
+s = u.spec_from_file_location("report", sys.argv[1]); r = u.module_from_spec(s); s.loader.exec_module(r)
+i = r.Run._read_info(sys.argv[2]); print(i.get("fio_where"), i.get("fio_fs"), i.get("fio_dir"), i.get("raw_dev"), sep="|")' "$ROOT/report.py" "$TMP/fw-info.txt")
+[ "$got" = "other|/dev/mapper/datavg-bench|$d|none" ] && check "report.py reads the fio_where line of info.txt" 0 || check "report.py reads the fio_where line of info.txt" 1 "got: $got"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
