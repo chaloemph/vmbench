@@ -1,0 +1,4 @@
+id	metric	value	unit	round
+cpu.sysbench.prime.1t	sysbench cpu 1t	1500.0	events/s	1
+disk.fio.randread-4k.qd32x4	fio randread 4k qd32x4	900000	IOPS	1
+disk.fio.randread-4k.qd1.p99	fio randread 4k qd1 p99	160.0	us	1

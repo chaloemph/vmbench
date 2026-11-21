@@ -460,5 +460,125 @@ class HardwareDifferences(unittest.TestCase):
         for name in ("hw_json", "hw_text", "hw_get", "flatten_hw", "_MISSING"):
             self.assertIs(getattr(xlsx, name), getattr(xlsx.report, name), name)
 
+
+class DiskWarning(unittest.TestCase):
+    """Where the fio test file was (info.txt fio_where / fio_fs / fio_dir, vmbench 0.2.5+) decides the disk warning.
+    disk-old is a v0.2.4 folder without those keys."""
+
+    def warn(self, *names, lang="en"):
+        report.set_lang(lang)
+        try:
+            return report.disk_warning([fixture(n) for n in names])
+        finally:
+            report.set_lang("en")
+
+    def test_keys_are_read_from_info_txt(self):
+        info = fixture("disk-other").info
+        self.assertEqual((info["fio_where"], info["fio_fs"], info["fio_dir"]),
+                         ("other", "/dev/mapper/datavg-bench", "/bench/bench data"))
+        self.assertEqual(info["raw_dev"], "none")
+        self.assertNotIn("fio_where", fixture("disk-old").info)
+
+    def test_os_disk(self):
+        self.assertEqual(self.warn("disk-os"), [
+            "Disk: measured on a file on the OS disk, so the numbers may include host cache and hypervisor settings. "
+            "Check the cache mode before concluding which storage is better"])
+        self.assertEqual(self.warn("disk-os", lang="th"), [
+            "Disk: วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor "
+            "ควรตรวจ cache mode ก่อนสรุปว่า storage ฝั่งไหนดีกว่า"])
+
+    def test_other_disk(self):
+        self.assertEqual(self.warn("disk-other"), [
+            "Disk: measured on a file in /bench/bench data on a separate disk (/dev/mapper/datavg-bench), not the OS disk. "
+            "Host cache and hypervisor settings may still be in the numbers, so check that disk's cache mode"])
+        self.assertEqual(self.warn("disk-other", lang="th"), [
+            "Disk: วัดจากไฟล์ใน /bench/bench data บนดิสก์แยก (/dev/mapper/datavg-bench) ไม่ใช่ OS disk "
+            "ตัวเลขยังอาจรวมผลของ host cache และการตั้งค่า hypervisor ควรตรวจ cache mode ของดิสก์นั้น"])
+
+    def test_unknown(self):
+        self.assertEqual(self.warn("disk-unknown"), [
+            "Disk: measured on a file in /bench-data (overlay); which disk holds it could not be told, so the numbers "
+            "may include host cache and hypervisor settings. Check the storage behind it and its cache mode "
+            "before concluding which storage is better"])
+        th = self.warn("disk-unknown", lang="th")
+        self.assertEqual(len(th), 1)
+        self.assertTrue(th[0].startswith("Disk: วัดจากไฟล์ใน /bench-data (overlay) ระบุไม่ได้ว่าอยู่บนดิสก์ไหน"), th)
+
+    def test_memory_and_network_filesystems(self):
+        self.assertEqual(self.warn("disk-tmpfs"), [
+            "Disk: measured on a file in /dev/shm/bench on tmpfs, which is memory, not a disk: the disk values are "
+            "not storage results"])
+        self.assertIn("ซึ่งเป็นหน่วยความจำ ไม่ใช่ดิสก์", self.warn("disk-tmpfs", lang="th")[0])
+        self.assertEqual(self.warn("disk-nfs"), [
+            "Disk: measured on a file in /mnt/share/bench on a network or host-shared filesystem (nfs4), so the "
+            "numbers include the network and the server's cache, not only a disk"])
+        self.assertIn("filesystem ทางเครือข่ายหรือที่แชร์จาก host (nfs4)", self.warn("disk-nfs", lang="th")[0])
+
+    def test_absent_key_is_neutral(self):
+        for lang, neutral in (("en", "Disk: measured on a file in the data directory, not on a raw device; which disk "
+                                     "holds it was not recorded (vmbench 0.2.4 or older)"),
+                              ("th", "Disk: วัดจากไฟล์ใน data directory ไม่ใช่ raw device ไม่ได้บันทึกว่าอยู่บนดิสก์ไหน "
+                                     "(vmbench 0.2.4 หรือเก่ากว่า)")):
+            out = self.warn("disk-old", lang=lang)
+            self.assertEqual(len(out), 1)
+            self.assertTrue(out[0].startswith(neutral), out)
+            self.assertNotIn("OS disk", out[0])
+        self.assertTrue(self.warn("rounds-a")[0].startswith("Disk: measured on a file in the data directory"))
+
+    def test_no_warning_without_disk_results_or_with_a_raw_device(self):
+        cpu_only = fixture("disk-os")
+        cpu_only.metrics = [m for m in cpu_only.metrics if not m.id.startswith("disk.")]
+        self.assertEqual(report.disk_warning([cpu_only]), [])
+        raw = fixture("disk-os")
+        raw.info["raw_dev"] = "/dev/nvme1n1"
+        self.assertEqual(report.disk_warning([raw]), [])
+
+    def test_same_case_gives_one_warning(self):
+        self.assertEqual(self.warn("disk-os", "disk-os"), self.warn("disk-os"))
+        self.assertEqual(self.warn("disk-old", "rounds-a"), self.warn("disk-old"))
+
+    def test_same_case_on_different_devices_gives_one_warning(self):
+        # two machine types, each with a separate data disk under another name: one line, the devices per run
+        a, b = fixture("disk-other"), fixture("disk-other")
+        a.label, b.label = "x86", "arm"
+        b.info["fio_fs"] = "/dev/vdb"
+        self.assertEqual(report.disk_warning([a, b]), [
+            "Disk: measured on a file in /bench/bench data on a separate disk (x86: /dev/mapper/datavg-bench, "
+            "arm: /dev/vdb), not the OS disk. Host cache and hypervisor settings may still be in the numbers, so "
+            "check that disk's cache mode"])
+
+    def test_file_runs_are_named_next_to_a_raw_device_run(self):
+        raw = fixture("disk-other")
+        raw.label, raw.info["raw_dev"] = "raw", "/dev/nvme1n1"
+        out = report.disk_warning([fixture("disk-os"), raw])
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0].startswith("Disk (disk-os): measured on a file on the OS disk"), out)
+
+    def test_different_cases_give_one_warning_each_with_labels(self):
+        out = self.warn("disk-os", "disk-other", "disk-old")
+        self.assertEqual(len(out), 3)
+        self.assertTrue(out[0].startswith("Disk (disk-os): measured on a file on the OS disk"), out)
+        self.assertTrue(out[1].startswith("Disk (disk-other): measured on a file in /bench/bench data on a separate disk"), out)
+        self.assertTrue(out[2].startswith("Disk (disk-old): measured on a file in the data directory"), out)
+        th = self.warn("disk-os", "disk-other", lang="th")
+        self.assertTrue(th[0].startswith("Disk (disk-os): วัดจากไฟล์บน OS disk"), th)
+
+    def test_environment_table_shows_where(self):
+        table = report.env_table([fixture("disk-other"), fixture("disk-old")])
+        row = next(r for r in table.rows if r[0] == "fio file / raw device")
+        self.assertEqual(row[1:], ["8G (other: /dev/mapper/datavg-bench) / none", "8G / none"])
+
+    def test_v024_folder_still_compares(self):
+        for lang, neutral in (("en", "- Disk: measured on a file in the data directory"), ("th", "- Disk: วัดจากไฟล์ใน data directory")):
+            r = cli("compare", os.path.join(FIX, "disk-old"), os.path.join(FIX, "rounds-a"), "--no-files", "--lang", lang)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(neutral, r.stdout)
+            self.assertNotIn("OS disk", r.stdout)
+        r = cli("compare", os.path.join(FIX, "disk-old"), os.path.join(FIX, "disk-other"), "--no-files")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("- Disk (disk-old): measured on a file in the data directory", r.stdout)
+        self.assertIn("- Disk (disk-other): measured on a file in /bench/bench data on a separate disk", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -135,6 +135,19 @@ Application		Node JS transactions	Team D	Nice to have
 
 การทดสอบแบบสุ่มและแบบเรียงลำดับใช้ direct I/O (ข้าม page cache ของ guest) บนไฟล์ทดสอบขนาด `FIO_SIZE` (ค่าเริ่มต้น 8 GB) หรือบน raw device เมื่อตั้ง `RAW_DEV` ส่วนการทดสอบ WAL ตั้งใจให้ต่างออกไป: เหมือน write-ahead log ของฐานข้อมูล คือเขียนลงไฟล์ใน `WAL_DIR` ตามปกติ แล้วเรียก `fdatasync` เพื่อบังคับให้ข้อมูลลงที่เก็บถาวร
 
+ตำแหน่งของไฟล์ทดสอบถูกบันทึกใน `info.txt` (vmbench 0.2.5 ขึ้นไป) เป็นบรรทัด `fio_where: other  fio_fs: /dev/mapper/datavg-bench  fio_dir: /bench/bench-data` stage info เทียบดิสก์ทั้งลูก (whole disk) ที่อยู่ใต้ filesystem ของ `DATA_DIR` กับของ `/` (`findmnt` แล้วไล่ `lsblk -s` ผ่าน partition, LVM, RAID และ dm-crypt): `os` = ดิสก์ลูกเดียวกับ `/` (โฟลเดอร์บน `/` หรือ LV อื่นใน volume group เดียวกัน), `other` = คนละดิสก์ (LV บนดิสก์ลูกที่สอง), `unknown` = ระบุไม่ได้ (tmpfs, overlay, NFS หรือ filesystem ทางเครือข่ายอื่น, ZFS, container หรือไม่มี/รัน `findmnt`/`lsblk` ไม่สำเร็จ) `fio_fs` คือ device หรือแค่ชนิดของ filesystem เมื่อไม่มี device (source ของ NFS จะมีชื่อเซิร์ฟเวอร์) การตรวจนี้อ่านอย่างเดียวและไม่ทำให้การรันล้ม "คนละดิสก์" หมายถึงคนละดิสก์ในมุมของ guest: virtual disk สองลูกอาจอยู่บน storage เดียวกันของ host ก็ได้ `WAL_DIR` และ `DB_DIR` (การทดสอบ `disk.wal.*` และ `disk.fio.db-*`) ไม่อยู่ในบรรทัดนี้ ดูได้จากส่วน "mounts" ของ `info.txt`
+
+คำเตือนเรื่อง disk ในรายงาน (เฉพาะเมื่อไม่ได้ตั้ง `RAW_DEV`) เป็นไปตามบรรทัดนั้น:
+
+| `fio_where` | คำเตือน |
+|---|---|
+| `os` | วัดจากไฟล์บน OS disk ตัวเลขอาจรวมผลของ host cache และการตั้งค่า hypervisor ควรตรวจ cache mode |
+| `other` | วัดจากไฟล์ใน `fio_dir` บนดิสก์แยก (`fio_fs`) ไม่ใช่ OS disk ตัวเลขยังอาจรวมผลของ host cache และการตั้งค่า hypervisor |
+| `unknown` | วัดจากไฟล์ใน `fio_dir` ระบุไม่ได้ว่าอยู่บนดิสก์ไหน ถ้าเป็น `tmpfs` จะบอกว่าค่าเป็นของหน่วยความจำ ไม่ใช่ storage และถ้าเป็น filesystem ทางเครือข่ายหรือที่แชร์จาก host (NFS, CIFS, 9p, virtiofs, ...) จะบอกว่าตัวเลขรวมผลของเครือข่ายและ cache ของเซิร์ฟเวอร์ |
+| ไม่มี (vmbench 0.2.4 หรือเก่ากว่า) | วัดจากไฟล์ใน data directory ไม่ได้บันทึกว่าอยู่บนดิสก์ไหน |
+
+การรันที่อยู่กรณีเดียวกันใช้คำเตือนข้อเดียวกัน ถ้าโฟลเดอร์หรือ device ต่างกันจะแสดงแยกตามการรัน (`/data บนดิสก์แยก (x86: /dev/sdb, arm: /dev/vdb)`) เมื่อการรันที่เปรียบเทียบตกอยู่คนละกรณี หรือมีการรันที่ใช้ `RAW_DEV` คำเตือนแต่ละข้อจะมีชื่อการรันกำกับ ตารางสภาพแวดล้อมแสดงกรณีไว้ข้างขนาดไฟล์: `8G (other: /dev/mapper/datavg-bench) / none`
+
 **สุ่ม 4 KiB หลายคำขอพร้อมกัน** (ความสามารถเมื่อมีโหลดพร้อมกัน):
 
 | ID | ดีคือ | ความหมายในการใช้งานจริง |

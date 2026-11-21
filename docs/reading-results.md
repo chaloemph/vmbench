@@ -129,6 +129,19 @@ Measures the storage the VM writes to. Disk behaviour decides how fast databases
 
 The random and sequential tests use direct I/O (they bypass the guest's page cache) on a test file of `FIO_SIZE` (8 GB by default), or on a raw device when `RAW_DEV` is set. The WAL tests are different on purpose: like a database's write-ahead log, they write normally to a file in `WAL_DIR` and then call `fdatasync` to force the data to stable storage.
 
+Where the test file lives is recorded in `info.txt` (vmbench 0.2.5 and later) on the line `fio_where: other  fio_fs: /dev/mapper/datavg-bench  fio_dir: /bench/bench-data`. The info stage compares the whole disks under the filesystem that holds `DATA_DIR` with those under `/` (`findmnt`, then `lsblk -s` through partitions, LVM, RAID and dm-crypt): `os` = the same disk as `/` (a folder on `/`, or another LV in the same volume group), `other` = a different disk (an LV on a second disk), `unknown` = it cannot be told (tmpfs, overlay, NFS or other network filesystems, ZFS, a container, or `findmnt`/`lsblk` missing or failing). `fio_fs` is the device, or only the filesystem type when there is no device (an NFS source would name a server). The check is read-only and never fails the run. "Another disk" means another disk as the guest sees it: two virtual disks can still sit on the same host storage. `WAL_DIR` and `DB_DIR` (the `disk.wal.*` and `disk.fio.db-*` tests) are not part of this line; the "mounts" section of `info.txt` shows where they are.
+
+The report's disk warning (only when `RAW_DEV` was not set) follows that line:
+
+| `fio_where` | Warning |
+|---|---|
+| `os` | measured on a file on the OS disk; host cache and hypervisor settings may be in the numbers, check the cache mode |
+| `other` | measured on a file in `fio_dir` on a separate disk (`fio_fs`), not the OS disk; host cache and hypervisor settings may still be in the numbers |
+| `unknown` | measured on a file in `fio_dir`, which disk holds it could not be told; on `tmpfs` it says the values are memory, not storage, and on a network or host-shared filesystem (NFS, CIFS, 9p, virtiofs, ...) that the network and the server's cache are in the numbers |
+| missing (vmbench 0.2.4 or older) | measured on a file in the data directory, which disk was not recorded |
+
+Runs of the same case share one warning; a folder or device that differs between them is listed per run (`/data on a separate disk (x86: /dev/sdb, arm: /dev/vdb)`). When the compared runs fall into different cases, or one of them used `RAW_DEV`, each warning names its runs. The environment table shows the case next to the file size: `8G (other: /dev/mapper/datavg-bench) / none`.
+
 **Random 4 KiB, many requests at once** (capacity under concurrent load):
 
 | ID | Better | What it means in practice |

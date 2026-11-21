@@ -165,12 +165,57 @@ info_hardware() {
   fi
 }
 
+# info_whole_disks DEV: the whole disks (lsblk TYPE "disk") a block device is built on, sorted, one per line: the
+# device itself, or the disks under its partition, LVM volume, RAID or dm-crypt chain (lsblk -s walks it upwards).
+# Prints nothing when lsblk fails or the chain ends elsewhere (a loop device, a device lsblk cannot see).
+info_whole_disks() {
+  lsblk -nlso NAME,TYPE "$1" 2>/dev/null | awk '$2 == "disk" {print $1}' | sort -u
+}
+
+# info_mount_source DIR: the device or source of the filesystem that holds DIR (findmnt), without the btrfs
+# "[/subvolume]" suffix; a /dev/disk/by-* link (it can carry a serial or UUID) is resolved to the plain device name
+info_mount_source() {
+  local src
+  src=$(findmnt -no SOURCE -T "$1" 2>/dev/null | head -n 1)
+  src=${src%%\[*}
+  case $src in /dev/disk/*) src=$(readlink -f "$src" 2>/dev/null) ;; esac
+  printf '%s\n' "$src"
+}
+
+# info_fio_where DIR: the info.txt line that says where the fio test file of the disk stage lives,
+#   fio_where: os|other|unknown  fio_fs: SOURCE  fio_dir: DIR
+# os = DIR is on (one of) the whole disk(s) that hold /, other = on different disks (an LVM volume on a second disk),
+# unknown = it cannot be decided: the filesystem is not on a local block device (tmpfs, overlay, NFS, ZFS, a
+# container's root), findmnt or lsblk are missing or fail. fio_fs is the device (/dev/mapper/datavg-bench) or, for a
+# filesystem without one, only its type (tmpfs, nfs4): an NFS or CIFS source would name a server. fio_dir comes last
+# because it is a path and may hold spaces. Read-only, and never fails: anything unexpected gives unknown.
+info_fio_where() {
+  local dir=$1 src="" rsrc="" fs="" where=unknown ddisks rdisks
+  while [ ! -e "$dir" ] && [ "$dir" != / ] && [ "$dir" != . ]; do dir=$(dirname "$dir"); done
+  if need findmnt; then
+    src=$(info_mount_source "$dir"); rsrc=$(info_mount_source /)
+    fs=$(findmnt -no FSTYPE -T "$dir" 2>/dev/null | head -n 1)
+  fi
+  case $src:$rsrc in
+    /dev/*:/dev/*)
+      if need lsblk; then
+        ddisks=$(info_whole_disks "$src"); rdisks=$(info_whole_disks "$rsrc")
+        if [ -n "$ddisks" ] && [ -n "$rdisks" ]; then
+          if [ -n "$(comm -12 <(printf '%s\n' "$ddisks") <(printf '%s\n' "$rdisks"))" ]; then where=os; else where=other; fi
+        fi
+      fi ;;
+  esac
+  case $src in /dev/*) ;; *) src=${fs:--} ;; esac
+  printf 'fio_where: %s  fio_fs: %s  fio_dir: %s\n' "$where" "${src:--}" "$1"
+}
+
 stage_info_run() {
   log "== info"
   {
     echo "date: $(date -Is)"; echo "label: $LABEL"; echo "host: $(hostname)"; echo "kernel: $(uname -srm)"
     . /etc/os-release; echo "os: $PRETTY_NAME"; echo "virt: $(systemd-detect-virt 2>/dev/null)"
     echo "nproc: $NPROC  ram_gb: $RAM_GB"; echo "quick: $QUICK  rounds: $ROUNDS  fio_size: $FIO_SIZE  raw_dev: ${RAW_DEV:-none}  nvme_devs: ${NVME_DEVS:-none}"
+    info_fio_where "$DATA_DIR"
     echo "--- lscpu"; lscpu
     echo "--- cpu flags"; grep -m1 -E '^(flags|Features)' /proc/cpuinfo | grep -o -wE 'aes|avx2|avx512f|sha_ni|pmull|sha2|atomics|sve|hypervisor' | sort -u | tr '\n' ' '; echo
     echo "--- memory"; free -m; echo "--- numa"; numactl -H 2>&1 | head -3
